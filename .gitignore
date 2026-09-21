@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 ENV/
+.env
 
 # Testing & caches
 .pytest_cache/
@@ -16,6 +17,8 @@ htmlcov/
 # Local artifacts & downloads
 test_downloads/
 example_output/
+export_data/
+pipeline_demo_output/
 *.sqlite
 *.sqlite3
 

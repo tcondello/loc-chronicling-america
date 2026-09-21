@@ -70,6 +70,42 @@ class BatchPipeline:
             self._title_cache[lccn] = title
             return title
 
+        # Try fetching from live LoC item endpoint if not in local SQLite
+        try:
+            url = f"https://www.loc.gov/item/{lccn}/?fo=json"
+            data = self.downloader.fetch_json(url)
+            item = data.get("item", {})
+            raw_title = item.get("title") or item.get("newspaper_title") or f"Newspaper {lccn}"
+            title_name = raw_title[0] if isinstance(raw_title, list) and raw_title else str(raw_title)
+
+            loc_state = item.get("location_state")
+            st_val = None
+            if isinstance(loc_state, list) and loc_state:
+                st_val = str(loc_state[0])
+            elif isinstance(loc_state, dict):
+                st_val = loc_state.get("label") or loc_state.get("value")
+            elif loc_state:
+                st_val = str(loc_state)
+
+            loc_city = item.get("location_city")
+            ct_val = loc_city[0] if isinstance(loc_city, list) and loc_city else str(loc_city or "Unknown")
+
+            eth = item.get("subject_ethnicity")
+            ethnicity_str = eth.get("label") if isinstance(eth, dict) else (str(eth[0]) if isinstance(eth, list) and eth else (str(eth) if eth else None))
+
+            fetched_title = TitleInfo(
+                lccn=lccn,
+                name=title_name,
+                state=st_val or (batch_awardee.upper() if batch_awardee and len(batch_awardee) == 2 else "Unknown"),
+                city=ct_val,
+                ethnicity=ethnicity_str,
+            )
+            self.db.upsert_title(fetched_title)
+            self._title_cache[lccn] = fetched_title
+            return fetched_title
+        except Exception:
+            pass
+
         # Fallback based on awardee/LCCN
         clean_name = f"Newspaper {lccn}"
         state_code = batch_awardee.upper() if batch_awardee and len(batch_awardee) == 2 else None
@@ -83,6 +119,7 @@ class BatchPipeline:
         )
         self._title_cache[lccn] = fallback
         return fallback
+
 
     def process_batch(
         self,
@@ -183,16 +220,15 @@ class BatchPipeline:
                 tar_path.unlink(missing_ok=True)
 
             # Step 5: Upload to Hugging Face if configured
-            if self.hf_manager:
-                for rel_path in written_files:
-                    local_f = self.output_dir / rel_path
-                    self.hf_manager.upload_file(
-                        local_path=local_f,
-                        path_in_repo=rel_path,
-                        commit_message=f"Add {pages_count} pages from batch {batch_name}",
-                    )
-                    if self.purge_local_after_upload:
-                        local_f.unlink(missing_ok=True)
+            if self.hf_manager and written_files:
+                batch_uploads = [(self.output_dir / rel_path, rel_path) for rel_path in written_files]
+                self.hf_manager.upload_files_atomic(
+                    local_files=batch_uploads,
+                    commit_message=f"Add {pages_count} pages from batch {batch_name}",
+                )
+                if self.purge_local_after_upload:
+                    for rel_path in written_files:
+                        (self.output_dir / rel_path).unlink(missing_ok=True)
 
             # Step 6: Mark completed in SQLite
             self.db.mark_pipeline_batch_completed(batch_name, pages_count, written_files)
@@ -319,12 +355,16 @@ class BatchPipeline:
         t0 = time.time()
         for idx, b_info in enumerate(batches_to_run, start=1):
             b_name = b_info.name
+            size_mb = (b_info.size_bytes or 0) / (1024 * 1024)
+            print(f"  [{idx}/{total_batches}] Batch '{b_name}' ({size_mb:.1f} MB) downloading & extracting...", flush=True)
             try:
                 pages, files = self.process_batch(b_info)
                 total_pages += pages
                 successful += 1
+                print(f"  [{idx}/{total_batches}] ✓ Batch '{b_name}' uploaded: {pages:,} pages across {len(files)} files", flush=True)
             except Exception as e:
                 failed += 1
+                print(f"  [{idx}/{total_batches}] ✗ Batch '{b_name}' failed: {e}", flush=True)
                 continue
 
         # Update master index

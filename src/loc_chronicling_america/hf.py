@@ -169,3 +169,27 @@ class HuggingFaceDatasetManager:
             repo_type="dataset",
             commit_message=msg,
         )
+
+    def upload_files_atomic(
+        self,
+        local_files: List[Tuple[Path, str]],
+        commit_message: Optional[str] = None,
+    ) -> None:
+        """Upload multiple files in a single atomic Git commit on Hugging Face."""
+        if not local_files:
+            return
+        from huggingface_hub import CommitOperationAdd, HfApi
+
+        api = HfApi(token=self.token)
+        operations = [
+            CommitOperationAdd(path_in_repo=path_in_repo, path_or_fileobj=str(local_path))
+            for local_path, path_in_repo in local_files
+        ]
+        msg = commit_message or f"Upload {len(operations)} dataset shards"
+        api.create_commit(
+            repo_id=self.repo_id,
+            repo_type="dataset",
+            operations=operations,
+            commit_message=msg,
+        )
+

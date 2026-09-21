@@ -289,10 +289,23 @@ class ChroniclingAmerica:
         batches: List[BatchInfo] = []
         target_rows = rows[:limit] if limit else rows
 
+        AWARDEE_TO_STATE = {
+            "ak": "AK", "arhi": "AR", "au": "AL", "az": "AZ", "cohi": "CO", "ct": "CT",
+            "curiv": "CA", "deu": "DE", "dlc": "DC", "fu": "FL", "gu": "GA", "hihouml": "HI",
+            "iahi": "IA", "idhi": "ID", "in": "IN", "iune": "NE", "khi": "KS", "kyu": "KY",
+            "lu": "LA", "mb": "MA", "mdu": "MD", "me": "ME", "mimtptc": "MI", "mnhi": "MN",
+            "mohi": "MO", "msar": "MS", "mthi": "MT", "nbu": "NE", "ncu": "NC", "ndhi": "ND",
+            "nhd": "NH", "njr": "NJ", "nmu": "NM", "nn": "NY", "nvln": "NV", "ohi": "OH",
+            "okhi": "OK", "oru": "OR", "prru": "PR", "pst": "PA", "rp": "RI", "scu": "SC",
+            "sdhi": "SD", "tu": "TN", "txdn": "TX", "uuml": "UT", "vi": "VI", "vnstcsc": "VA",
+            "vtu": "VT", "wa": "WA", "whi": "WI", "wvu": "WV", "wyu": "WY",
+        }
+
         for filename, date_str, size_str in target_rows:
             batch_name = filename.replace(".tar.bz2", "")
             awardee = batch_name.split("_")[0] if "_" in batch_name else None
-            state = awardee.upper() if awardee and len(awardee) == 2 else None
+            state = AWARDEE_TO_STATE.get(awardee) if awardee else None
+
 
             batches.append(
                 BatchInfo(
