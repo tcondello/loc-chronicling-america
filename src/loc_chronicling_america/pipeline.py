@@ -366,6 +366,8 @@ class BatchPipeline:
                 failed += 1
                 print(f"  [{idx}/{total_batches}] ✗ Batch '{b_name}' failed: {e}", flush=True)
                 continue
+            finally:
+                time.sleep(2.0)
 
         # Update master index
         self.update_catalog_index()

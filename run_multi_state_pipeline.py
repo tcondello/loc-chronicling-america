@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run multi-state streaming pipeline for Chronicling America data.
 
-Processes 10 batches each for NE, NJ, NY, PA, CA, streaming to compressed JSONL
-and pushing directly to Hugging Face with atomic commits and scratch space purging.
+Streams batches to compressed JSONL and pushes directly to Hugging Face
+with atomic commits and automatic scratch space purging.
 """
 
 import argparse
@@ -20,41 +20,56 @@ if env_file.exists():
             k, v = line.strip().split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
 
-TARGET_STATES = ["NE", "NJ", "NY", "PA", "CA"]
-BATCHES_PER_STATE = 10
-HF_REPO = "Tim-Pinecone/LOC-Chronicling-America"
-OUTPUT_DIR = Path("./export_data")
-
 
 def main():
+    parser = argparse.ArgumentParser(description="Run multi-state Chronicling America streaming export pipeline")
+    parser.add_argument("--states", nargs="+", default=["NE", "NJ", "NY", "PA", "CA"], help="States to process")
+    parser.add_argument("--limit-per-state", type=int, default=None, help="Max batches per state (default: all pending)")
+    parser.add_argument("--hf-repo", default="Tim-Pinecone/LOC-Chronicling-America", help="Hugging Face repo id")
+    parser.add_argument("--output-dir", default="./export_data", help="Output directory")
+    args = parser.parse_args()
+
+    out_dir = Path(args.output_dir)
+
     print("=" * 80, flush=True)
-    print(f"Starting Multi-State Chronicling America Pipeline", flush=True)
-    print(f"Target States      : {', '.join(TARGET_STATES)} ({BATCHES_PER_STATE} batches each, 50 total)", flush=True)
-    print(f"Hugging Face Repo  : https://huggingface.co/datasets/{HF_REPO}", flush=True)
-    print(f"Output Directory   : {OUTPUT_DIR.resolve()}", flush=True)
+    print("Starting Multi-State Chronicling America Pipeline", flush=True)
+    print(f"Target States      : {', '.join(args.states)}", flush=True)
+    print(f"Batches per State  : {'ALL pending' if args.limit_per_state is None else args.limit_per_state}", flush=True)
+    print(f"Hugging Face Repo  : https://huggingface.co/datasets/{args.hf_repo}", flush=True)
+    print(f"Output Directory   : {out_dir.resolve()}", flush=True)
     print(f"Zero-Bloat Scratch : Enabled (keep_tar=False)", flush=True)
     print("=" * 80, flush=True)
 
     pipeline = BatchPipeline(
-        output_dir=OUTPUT_DIR,
-        scratch_dir=OUTPUT_DIR / "scratch",
-        hf_repo=HF_REPO,
+        output_dir=out_dir,
+        scratch_dir=out_dir / "scratch",
+        hf_repo=args.hf_repo,
         hf_token=os.environ.get("HF_TOKEN"),
         keep_tar=False,
         purge_local_after_upload=False,
     )
+
+    # Ensure any failed batches are reset to pending for retry
+    with pipeline.db._get_connection() as conn:
+        conn.execute("UPDATE pipeline_batches SET status = 'pending', error_message = NULL WHERE status = 'failed'")
+        conn.commit()
 
     overall_start = time.time()
     total_successful = 0
     total_failed = 0
     total_pages = 0
 
-    for idx, state in enumerate(TARGET_STATES, start=1):
-        print(f"\n>>> [{idx}/{len(TARGET_STATES)}] Starting State: {state} ({BATCHES_PER_STATE} batches) ...", flush=True)
-        t_state_start = time.time()
+    for idx, state in enumerate(args.states, start=1):
+        pending_list = pipeline.db.get_pending_pipeline_batches(state=state, limit=args.limit_per_state)
+        batch_count = len(pending_list)
+        print(f"\n>>> [{idx}/{len(args.states)}] Starting State: {state} ({batch_count} pending batches) ...", flush=True)
+
+        if batch_count == 0:
+            print(f"    No pending batches for {state}. Moving to next state.", flush=True)
+            continue
 
         try:
-            res = pipeline.run(state=state, limit_batches=BATCHES_PER_STATE)
+            res = pipeline.run(state=state, limit_batches=args.limit_per_state)
             s_count = res.get("successful_batches", 0)
             f_count = res.get("failed_batches", 0)
             p_count = res.get("pages_extracted", 0)
@@ -64,7 +79,7 @@ def main():
             total_failed += f_count
             total_pages += p_count
 
-            print(f">>> State {state} Finished in {elapsed:.1f}s: {s_count} succeeded, {f_count} failed, {p_count:,} pages", flush=True)
+            print(f">>> State {state} Finished in {elapsed / 60:.1f}m: {s_count} succeeded, {f_count} failed, {p_count:,} pages", flush=True)
 
         except Exception as e:
             print(f"!!! Error processing state {state}: {e}", flush=True)
@@ -72,12 +87,12 @@ def main():
     overall_elapsed = time.time() - overall_start
 
     print("\n" + "=" * 80, flush=True)
-    print("Pipeline Execution Complete!", flush=True)
-    print(f"Total Successful Batches : {total_successful} / {len(TARGET_STATES) * BATCHES_PER_STATE}", flush=True)
+    print("Multi-State Pipeline Execution Complete!", flush=True)
+    print(f"Total Successful Batches : {total_successful}", flush=True)
     print(f"Total Failed Batches     : {total_failed}", flush=True)
     print(f"Total Pages Extracted    : {total_pages:,}", flush=True)
     print(f"Overall Elapsed Time     : {overall_elapsed / 60:.2f} minutes ({overall_elapsed:.1f}s)", flush=True)
-    print(f"Hugging Face Dataset     : https://huggingface.co/datasets/{HF_REPO}", flush=True)
+    print(f"Hugging Face Dataset     : https://huggingface.co/datasets/{args.hf_repo}", flush=True)
     print("=" * 80, flush=True)
 
 
