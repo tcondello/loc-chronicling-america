@@ -56,9 +56,47 @@ class ChroniclingAmerica:
         """
         return self.resolver.resolve(url_or_lccn=url_or_lccn, date=date, edition=edition)
 
+    def get_issues(
+        self,
+        lccn: str,
+        limit: int = 50,
+        sort: str = "date",
+    ) -> List[dict]:
+        """Get chronological list of issues available for an LCCN.
+
+        Args:
+            lccn: Library of Congress Control Number (e.g. '00225879').
+            limit: Maximum number of issues to return.
+            sort: Sort order ('date' for ascending chronological, 'date_desc' for descending).
+
+        Returns:
+            List of dicts with 'date', 'title', 'url', and 'batch'.
+        """
+        clean_lccn = lccn.strip()
+        sort_param = "date" if sort == "date" else "date_desc"
+        url = f"https://www.loc.gov/search/?dl=page&fa=partof:chronicling+america%7Cnumber_page:0000000001%7Cnumber_lccn:{clean_lccn}&fo=json&sb={sort_param}&c={limit}"
+        data = self.downloader.fetch_json(url)
+        results = data.get("results", [])
+        issues = []
+        for r in results:
+            raw_url = r.get("url", "")
+            clean_url = raw_url.split("?")[0] if "?" in raw_url else raw_url
+            batches = r.get("batch", [])
+            batch_name = batches[0] if batches else None
+            issues.append(
+                {
+                    "title": r.get("title", ""),
+                    "date": r.get("date", ""),
+                    "url": clean_url,
+                    "batch": batch_name,
+                }
+            )
+        return issues
+
     # ----------------------------------------------------------------------
     # Batch Access
     # ----------------------------------------------------------------------
+
 
     def get_batch(self, name: str) -> Batch:
         """Get a Batch object for bulk inspections and downloads.

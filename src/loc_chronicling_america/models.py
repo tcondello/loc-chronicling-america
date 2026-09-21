@@ -246,6 +246,83 @@ class PageRecord(BaseModel):
         dest.write_text(text, encoding="utf-8")
         return dest
 
+    def to_pinecone_document(
+        self,
+        text_field: str = "text",
+        include_text: bool = True,
+        extra_metadata: Optional[dict] = None,
+        client: Optional[Any] = None,
+    ) -> dict:
+        """Convert page record to Pinecone document schema format.
+
+        Follows Pinecone Document Schema specification:
+        https://docs.pinecone.io/guides/index-data/import-data#prepare-document-schema-files-jsonl
+
+        - Unique `_id` string
+        - Schema full-text search string field (e.g. `text` or `body`)
+        - Valid filterable metadata (strings, integers, floats, booleans, list[str])
+        - No reserved field names starting with `_` or `$`
+        """
+        doc_id = f"{self.lccn}_{self.date}_ed-{self.edition}_seq-{self.sequence}"
+        doc: dict = {"_id": doc_id}
+
+        text = ""
+        if include_text:
+            text = self.get_text(client=client)
+            doc[text_field] = text
+
+        # Parse date parts
+        year, month, day = None, None, None
+        try:
+            parts = [int(p) for p in self.date.split("-")]
+            if len(parts) == 3:
+                year, month, day = parts[0], parts[1], parts[2]
+        except Exception:
+            pass
+
+        meta: dict = {
+            "title": self.title,
+            "lccn": self.lccn,
+            "date": self.date,
+            "edition": self.edition,
+            "sequence": self.sequence,
+        }
+        if year is not None:
+            meta["year"] = year
+        if month is not None:
+            meta["month"] = month
+        if day is not None:
+            meta["day"] = day
+        if self.width:
+            meta["width"] = self.width
+        if self.height:
+            meta["height"] = self.height
+        if self.reel_number:
+            meta["reel_number"] = str(self.reel_number)
+        if self.pdf_url:
+            meta["pdf_url"] = self.pdf_url
+
+        img_url = self.iiif_image_url(pct=100)
+        if img_url:
+            meta["image_url"] = img_url
+
+        if text:
+            meta["char_count"] = len(text)
+            meta["word_count"] = len(text.split())
+
+        if extra_metadata:
+            for k, v in extra_metadata.items():
+                if k.startswith("_") or k.startswith("$") or k == text_field:
+                    continue
+                if v is not None and isinstance(v, (str, int, float, bool, list)):
+                    if isinstance(v, list) and not all(isinstance(x, str) for x in v):
+                        continue
+                    meta[k] = v
+
+        doc.update(meta)
+        return doc
+
+
 
 def _create_single_page_pdf(jpeg_data: bytes, width: int, height: int) -> bytes:
     """Create a minimal, valid single-page PDF embedding raw JPEG data using /DCTDecode."""
@@ -384,6 +461,47 @@ class IssueRecord(BaseModel):
                 )
 
         return results
+
+    def to_pinecone_documents(
+        self,
+        text_field: str = "text",
+        include_text: bool = True,
+        extra_metadata: Optional[dict] = None,
+        client: Optional[Any] = None,
+    ) -> List[dict]:
+        """Convert all pages in this issue to Pinecone document schema dictionaries.
+
+        Follows Pinecone Document Schema specifications:
+        https://docs.pinecone.io/guides/index-data/import-data#prepare-document-schema-files-jsonl
+        """
+        issue_meta: dict = {
+            "newspaper_title": self.newspaper_title,
+            "batch_name": self.batch_name,
+            "page_count": self.page_count,
+            "loc_item_url": self.loc_item_url,
+        }
+        if self.city:
+            issue_meta["city"] = self.city
+        if self.state:
+            issue_meta["state"] = self.state
+        if self.place_of_publication:
+            issue_meta["place_of_publication"] = self.place_of_publication
+
+        if extra_metadata:
+            issue_meta.update(extra_metadata)
+
+        docs = []
+        for page in self.pages:
+            docs.append(
+                page.to_pinecone_document(
+                    text_field=text_field,
+                    include_text=include_text,
+                    extra_metadata=issue_meta,
+                    client=client,
+                )
+            )
+        return docs
+
 
 
 class DownloadRecord(BaseModel):
