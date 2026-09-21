@@ -21,7 +21,7 @@ class Downloader:
         user_agent: str = DEFAULT_USER_AGENT,
         timeout: float = 30.0,
         rate_limit_delay: float = 0.1,  # Delay between requests in seconds
-        max_retries: int = 3,
+        max_retries: int = 5,
     ):
         self.user_agent = user_agent
         self.timeout = timeout
@@ -158,6 +158,20 @@ class Downloader:
                 temp_dest.replace(dest)
                 return dest
 
+            except httpx.HTTPStatusError as e:
+                temp_dest.unlink(missing_ok=True)
+                last_err = e
+                if attempt < self.max_retries - 1:
+                    if e.response.status_code == 429:
+                        try:
+                            wait_sec = int(e.response.headers.get("Retry-After", 15 * (attempt + 1)))
+                        except (ValueError, TypeError):
+                            wait_sec = 15 * (attempt + 1)
+                        time.sleep(max(wait_sec, 10))
+                    else:
+                        time.sleep(2.0 * (attempt + 1))
+                else:
+                    raise RuntimeError(f"Failed to download {url} after {self.max_retries} attempts: {last_err}") from last_err
             except Exception as e:
                 temp_dest.unlink(missing_ok=True)
                 last_err = e
