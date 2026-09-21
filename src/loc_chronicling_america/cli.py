@@ -68,7 +68,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_cat = subparsers.add_parser("catalog", help="Manage local SQLite catalog")
     p_cat.add_argument("--sync", action="store_true", help="Synchronize batches and titles into SQLite")
 
+    # Pipeline Command
+    p_pipe = subparsers.add_parser("export-pipeline", help="Run streaming batch export pipeline to Hugging Face / Pinecone JSONL")
+    p_pipe.add_argument("--state", help="Filter batches by state code (e.g. NE, OH, CA)")
+    p_pipe.add_argument("--batch", help="Process a specific batch identifier (e.g. nbu_indescribablebeast_ver01)")
+    p_pipe.add_argument("--limit-batches", type=int, help="Maximum number of batches to process in this run")
+    p_pipe.add_argument("--output-dir", default="./export_data", help="Output directory (default: ./export_data)")
+    p_pipe.add_argument("--scratch-dir", help="Scratch directory for temporary .tar.bz2 archives")
+    p_pipe.add_argument("--hf-repo", help="Optional Hugging Face dataset repository (e.g. username/dataset-name)")
+    p_pipe.add_argument("--hf-token", help="Optional Hugging Face write token")
+    p_pipe.add_argument("--keep-tar", action="store_true", help="Keep .tar.bz2 archives after processing (default: False)")
+    p_pipe.add_argument("--purge-after-upload", action="store_true", help="Delete local .jsonl.gz shards after successful HF upload")
+    p_pipe.add_argument("--status", action="store_true", help="Display pipeline queue status and exit")
+
     return parser
+
 
 
 def handle_resolve(client: ChroniclingAmerica, args: argparse.Namespace) -> None:
@@ -238,6 +252,64 @@ def handle_catalog(client: ChroniclingAmerica, args: argparse.Namespace) -> None
     )
 
 
+def handle_pipeline(client: ChroniclingAmerica, args: argparse.Namespace) -> None:
+    from .pipeline import BatchPipeline
+
+    pipeline = BatchPipeline(
+        output_dir=args.output_dir,
+        scratch_dir=args.scratch_dir,
+        db_path=client.catalog.db_path,
+        downloader=client.downloader,
+        hf_repo=args.hf_repo,
+        hf_token=args.hf_token,
+        keep_tar=args.keep_tar,
+        purge_local_after_upload=args.purge_after_upload,
+    )
+
+    if getattr(args, "status", False):
+        summary = pipeline.db.get_pipeline_summary()
+        t = Table(title="Pipeline Task Queue Status", show_header=True, header_style="bold cyan")
+        t.add_column("Status", style="bold")
+        t.add_column("Batches Count", justify="right")
+        t.add_row("Pending", str(summary.get("pending", 0)))
+        t.add_row("Processing", str(summary.get("processing", 0)))
+        t.add_row("Completed", str(summary.get("completed", 0)))
+        t.add_row("Failed", str(summary.get("failed", 0)))
+        t.add_row("Total Pages Extracted", str(summary.get("pages_extracted", 0)))
+        console.print(t)
+        return
+
+    console.print("[bold green]Starting Chronicling America Streaming Export Pipeline...[/bold green]")
+    if args.state:
+        console.print(f"Target State Filter : [cyan]{args.state}[/cyan]")
+    if args.batch:
+        console.print(f"Target Single Batch : [cyan]{args.batch}[/cyan]")
+    if args.limit_batches:
+        console.print(f"Batch Limit         : [cyan]{args.limit_batches}[/cyan]")
+    console.print(f"Output Directory    : [cyan]{args.output_dir}[/cyan]")
+    if args.hf_repo:
+        console.print(f"Hugging Face Repo   : [cyan]{args.hf_repo}[/cyan]")
+
+    res = pipeline.run(
+        state=args.state,
+        limit_batches=args.limit_batches,
+        batch_name=args.batch,
+    )
+
+    console.print(
+        Panel(
+            f"[bold green]Pipeline Run Completed![/bold green]\n"
+            f"Batches Processed: {res['batches_processed']}\n"
+            f"Successful: {res['successful_batches']}\n"
+            f"Failed: {res['failed_batches']}\n"
+            f"Pages Extracted: {res['pages_extracted']}\n"
+            f"Elapsed Time: {res['elapsed_seconds']}s",
+            title="Pipeline Execution Summary",
+            border_style="green",
+        )
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -253,7 +325,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         handle_search(client, args)
     elif args.command == "catalog":
         handle_catalog(client, args)
+    elif args.command == "export-pipeline":
+        handle_pipeline(client, args)
 
 
 if __name__ == "__main__":
     main()
+

@@ -86,8 +86,21 @@ class CatalogDB:
 
                 CREATE INDEX IF NOT EXISTS idx_downloads_item ON local_downloads(item_id, asset_type);
                 CREATE INDEX IF NOT EXISTS idx_downloads_batch ON local_downloads(batch_name);
+
+                CREATE TABLE IF NOT EXISTS pipeline_batches (
+                    batch_name TEXT PRIMARY KEY,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    pages_extracted INTEGER DEFAULT 0,
+                    output_files TEXT,
+                    error_message TEXT,
+                    started_at TEXT,
+                    completed_at TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pipeline_status ON pipeline_batches(status);
                 """
             )
+
 
     # ----------------------------------------------------------------------
     # Download Tracking
@@ -418,6 +431,139 @@ class CatalogDB:
         with self._get_connection() as conn:
             cur = conn.execute("SELECT COUNT(*) FROM titles")
             return cur.fetchone()[0]
+
+    # ----------------------------------------------------------------------
+    # Pipeline Batch Queue Management
+    # ----------------------------------------------------------------------
+
+    def init_pipeline_batches(self, state: Optional[str] = None) -> int:
+        """Initialize the pipeline_batches queue from the batches table.
+        
+        Inserts any batches not already in pipeline_batches with status='pending'.
+        """
+        with self._get_connection() as conn:
+            if state:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO pipeline_batches (batch_name, status)
+                    SELECT name, 'pending' FROM batches WHERE UPPER(state) = UPPER(?)
+                    """,
+                    (state,),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO pipeline_batches (batch_name, status)
+                    SELECT name, 'pending' FROM batches
+                    """
+                )
+            conn.commit()
+            cur = conn.execute("SELECT count(*) FROM pipeline_batches WHERE status = 'pending'")
+            return cur.fetchone()[0]
+
+    def get_pending_pipeline_batches(
+        self,
+        state: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[BatchInfo]:
+        """Fetch BatchInfo records for pending batches in the pipeline queue."""
+        self.init_pipeline_batches(state=state)
+        query = """
+            SELECT b.* FROM batches b
+            JOIN pipeline_batches p ON b.name = p.batch_name
+            WHERE p.status = 'pending'
+        """
+        params: list = []
+        if state:
+            query += " AND UPPER(b.state) = UPPER(?)"
+            params.append(state)
+        query += " ORDER BY b.size_bytes ASC"
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        with self._get_connection() as conn:
+            cur = conn.execute(query, tuple(params))
+            rows = cur.fetchall()
+            return [self._row_to_batch(r) for r in rows]
+
+    def mark_pipeline_batch_processing(self, batch_name: str) -> None:
+        """Mark a batch as currently processing."""
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO pipeline_batches (batch_name, status, started_at)
+                VALUES (?, 'processing', ?)
+                ON CONFLICT(batch_name) DO UPDATE SET
+                    status = 'processing',
+                    started_at = ?,
+                    error_message = NULL
+                """,
+                (batch_name, now_iso, now_iso),
+            )
+            conn.commit()
+
+    def mark_pipeline_batch_completed(
+        self,
+        batch_name: str,
+        pages_extracted: int,
+        output_files: List[str],
+    ) -> None:
+        """Mark a batch as completed with its output files and count."""
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        files_json = json.dumps(output_files)
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE pipeline_batches
+                SET status = 'completed',
+                    pages_extracted = ?,
+                    output_files = ?,
+                    completed_at = ?,
+                    error_message = NULL
+                WHERE batch_name = ?
+                """,
+                (pages_extracted, files_json, now_iso, batch_name),
+            )
+            conn.commit()
+
+    def mark_pipeline_batch_failed(self, batch_name: str, error_message: str) -> None:
+        """Mark a batch as failed with the error description."""
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE pipeline_batches
+                SET status = 'failed',
+                    error_message = ?,
+                    completed_at = ?
+                WHERE batch_name = ?
+                """,
+                (error_message, now_iso, batch_name),
+            )
+            conn.commit()
+
+    def get_pipeline_summary(self) -> Dict[str, Any]:
+        """Return counts of batches by pipeline status and total pages extracted."""
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT status, count(*), coalesce(sum(pages_extracted), 0)
+                FROM pipeline_batches
+                GROUP BY status
+                """
+            )
+            rows = cur.fetchall()
+            stats = {"total": 0, "pending": 0, "processing": 0, "completed": 0, "failed": 0, "pages_extracted": 0}
+            for row in rows:
+                st, cnt, pages = row[0], row[1], row[2]
+                if st in stats:
+                    stats[st] = cnt
+                stats["total"] += cnt
+                stats["pages_extracted"] += pages
+            return stats
+
 
     # ----------------------------------------------------------------------
     # Helper Mappers

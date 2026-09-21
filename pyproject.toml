@@ -46,9 +46,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pipeline = [
+    "pyarrow>=14.0.0",
+    "huggingface_hub>=0.20.0",
+]
 dev = [
     "pytest>=8.0.0",
+    "pyarrow>=14.0.0",
+    "huggingface_hub>=0.20.0",
 ]
+
 
 [project.scripts]
 loc-chronam = "loc_chronicling_america.cli:main"
