@@ -128,8 +128,8 @@ def test_pipeline_parquet_batch_processing(tmp_path):
     assert pages_extracted == 2
     assert len(written_files) == 1
 
-    # Verify output hierarchy: newspapers/nebraska/the-evening-herald/nebraska_the-evening-herald_omaha_1915.parquet
-    expected_rel_path = "newspapers/nebraska/the-evening-herald/nebraska_the-evening-herald_omaha_1915.parquet"
+    # Verify output hierarchy: newspapers/nebraska/the_evening_herald/nebraska_the_evening_herald_1915_07_03.parquet
+    expected_rel_path = "newspapers/nebraska/the_evening_herald/nebraska_the_evening_herald_1915_07_03.parquet"
     assert written_files[0] == expected_rel_path
     expected_file = out_dir / written_files[0]
     assert expected_file.exists()
@@ -144,10 +144,14 @@ def test_pipeline_parquet_batch_processing(tmp_path):
     assert records[0]["_id"] == "sn85026945_1915-07-03_ed-1_seq-1"
     assert records[0]["text"] == "Front page headline text of the evening herald."
     assert records[0]["newspaper_title"] == "The Evening Herald"
+    assert records[0]["newspaper_slug"] == "the_evening_herald"
     assert records[0]["city"] == "Omaha"
     assert records[0]["state"] == "Nebraska"
     assert records[0]["year"] == 1915
     assert records[0]["sequence"] == 1
+    assert records[0]["loc_page_url"] == "https://www.loc.gov/resource/sn85026945/1915-07-03/ed-1/?sp=1"
+    assert records[0]["pdf_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.pdf"
+    assert records[0]["image_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.jp2"
 
     # Test master index generation
     jsonl_cat, parquet_cat = pipeline.update_catalog_index()

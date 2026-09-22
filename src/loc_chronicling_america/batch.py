@@ -32,7 +32,15 @@ class ArchivePageItem:
 
     @property
     def loc_url(self) -> str:
-        return f"https://www.loc.gov/item/{self.lccn}/{self.date}/ed-{self.edition}/seq-{self.sequence}/"
+        return f"https://www.loc.gov/resource/{self.lccn}/{self.date}/ed-{self.edition}/?sp={self.sequence}"
+
+    @property
+    def pdf_url(self) -> str:
+        return f"https://chroniclingamerica.loc.gov/lccn/{self.lccn}/{self.date}/ed-{self.edition}/seq-{self.sequence}.pdf"
+
+    @property
+    def image_url(self) -> str:
+        return f"https://chroniclingamerica.loc.gov/lccn/{self.lccn}/{self.date}/ed-{self.edition}/seq-{self.sequence}.jp2"
 
 
 class Batch:

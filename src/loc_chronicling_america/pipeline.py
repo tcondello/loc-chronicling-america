@@ -1,6 +1,6 @@
 """Streaming batch transmutation pipeline for Chronicling America.
 
-Converts NDNP bulk .tar.bz2 archives into a researcher-friendly State/Newspaper/Year
+Converts NDNP bulk .tar.bz2 archives into a researcher-friendly State/Newspaper/Issue
 hierarchy of compressed Apache Parquet files without local disk bloat.
 """
 
@@ -25,8 +25,22 @@ from .hf import HuggingFaceDatasetManager
 from .models import BatchInfo, TitleInfo
 
 
+def clean_newspaper_title(raw_title: str) -> str:
+    """Extract clean title by removing parenthetical location and date ranges."""
+    clean = re.sub(r"\s*\([^)]*\).*", "", raw_title).strip()
+    clean = re.sub(r"\s*\d{4}[-–][\d\?]{4}$", "", clean).strip()
+    clean = re.sub(r"\s*\d{4}$", "", clean).strip()
+    return clean or raw_title
+
+
+def clean_slug(text: str) -> str:
+    """Create a clean, underscore-separated slug from a string."""
+    clean = re.sub(r"[^\w\s-]", "", text.lower()).strip()
+    return re.sub(r"[-\s]+", "_", clean)
+
+
 def slugify(text: str) -> str:
-    """Create a clean, URL-safe slug from a string."""
+    """Create a clean, URL-safe slug with hyphens from a string."""
     clean = re.sub(r"[^\w\s-]", "", text.lower()).strip()
     return re.sub(r"[-\s]+", "-", clean)
 
@@ -49,7 +63,10 @@ PARQUET_PAGE_SCHEMA = pa.schema([
     ("ethnicity", pa.string()),
     ("char_count", pa.int32()),
     ("word_count", pa.int32()),
+    ("loc_page_url", pa.string()),
     ("loc_item_url", pa.string()),
+    ("pdf_url", pa.string()),
+    ("image_url", pa.string()),
     ("source_batch", pa.string()),
 ])
 
@@ -152,7 +169,7 @@ class BatchPipeline:
         1. Marks batch as processing in SQLite.
         2. Downloads the .tar.bz2 bulk archive to scratch space.
         3. Iterates through all ocr.txt members.
-        4. Writes pages to state/newspaper/year .parquet files.
+        4. Writes pages to state/newspaper/issue .parquet files.
         5. Deletes the .tar.bz2 to reclaim disk space.
         6. Uploads to Hugging Face if configured.
         7. Marks batch as completed in SQLite.
@@ -182,28 +199,36 @@ class BatchPipeline:
                     continue
 
                 title = self._get_title_info(item.lccn, batch_awardee=awardee)
-                state_slug = slugify(title.state or awardee or "unknown")
-                city_slug = slugify(title.city or "unknown")
-                title_slug = slugify(title.name)
-                year_str = item.year
+                clean_name = clean_newspaper_title(title.name)
+                newspaper_slug = clean_slug(clean_name)
+                state_slug = clean_slug(title.state or awardee or "unknown")
 
-                # Hierarchy: newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{city_slug}_{year}.parquet
-                filename = f"{state_slug}_{title_slug}_{city_slug}_{year_str}.parquet"
-                rel_path = f"newspapers/{state_slug}/{title_slug}/{filename}"
+                year_int = int(item.year) if str(item.year).isdigit() else 0
+                month_int = int(item.month) if str(item.month).isdigit() else 0
+                day_int = int(item.day) if str(item.day).isdigit() else 0
+
+                # Issue-level Parquet: newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet
+                filename = f"{state_slug}_{newspaper_slug}_{year_int:04d}_{month_int:02d}_{day_int:02d}.parquet"
+                rel_path = f"newspapers/{state_slug}/{newspaper_slug}/{filename}"
 
                 doc_id = f"{item.lccn}_{item.date}_ed-{item.edition}_seq-{item.sequence}"
+
+                # Real working LoC Page Viewer URL and Direct Asset URLs
+                loc_page_url = f"https://www.loc.gov/resource/{item.lccn}/{item.date}/ed-{item.edition}/?sp={item.sequence}"
+                pdf_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.pdf"
+                image_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.jp2"
 
                 doc = {
                     "_id": doc_id,
                     "text": item.text.strip(),
-                    "title": f"{title.name}, {item.date} - Page {item.sequence}",
-                    "newspaper_title": title.name,
-                    "newspaper_slug": title_slug,
+                    "title": f"{clean_name}, {item.date} - Page {item.sequence}",
+                    "newspaper_title": clean_name,
+                    "newspaper_slug": newspaper_slug,
                     "lccn": item.lccn,
                     "date": item.date,
-                    "year": int(item.year) if item.year.isdigit() else 0,
-                    "month": int(item.month) if item.month.isdigit() else 0,
-                    "day": int(item.day) if item.day.isdigit() else 0,
+                    "year": year_int,
+                    "month": month_int,
+                    "day": day_int,
                     "edition": str(item.edition),
                     "sequence": int(item.sequence) if str(item.sequence).isdigit() else 1,
                     "city": title.city or "Unknown",
@@ -211,7 +236,10 @@ class BatchPipeline:
                     "ethnicity": title.ethnicity or None,
                     "char_count": len(item.text),
                     "word_count": len(item.text.split()),
-                    "loc_item_url": item.loc_url,
+                    "loc_page_url": loc_page_url,
+                    "loc_item_url": loc_page_url,
+                    "pdf_url": pdf_url,
+                    "image_url": image_url,
                     "source_batch": batch_name,
                 }
 
@@ -323,7 +351,7 @@ class BatchPipeline:
             summary["file_count"] += 1
             summary["total_pages"] += num_rows
             summary["total_size_bytes"] += pq_file.stat().st_size
-            year_match = re.search(r"_(\d{4})\.parquet$", pq_file.name)
+            year_match = re.search(r"_(\d{4})(?:_\d{2}_\d{2})?\.parquet$", pq_file.name)
             if year_match:
                 summary["years"].add(int(year_match.group(1)))
 

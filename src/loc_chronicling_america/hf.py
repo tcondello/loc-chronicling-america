@@ -49,7 +49,7 @@ newspapers/
 ```
 
 * **`catalog.parquet`**: A lightweight master table (~5 MB) indexing every newspaper title, city, state, publication years, page counts, and demographics for instant discovery.
-* **`newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{city_slug}_{year}.parquet`**: Columnar Snappy-compressed Parquet files where each row is one newspaper page with complete plain text OCR and rich bibliographic metadata.
+* **`newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet`**: Columnar Snappy-compressed Parquet files where each file contains all pages of one issue, with complete plain text OCR and rich bibliographic metadata.
 
 ## Document Schema
 
@@ -59,9 +59,9 @@ Each Parquet record contains:
 | :--- | :--- | :--- |
 | `_id` | `string` | Unique record ID: `{lccn}_{date}_ed-{edition}_seq-{sequence}` |
 | `text` | `string` | Full plain text OCR for the page |
-| `title` | `string` | Human-readable page title |
-| `newspaper_title`| `string` | Base publication name (e.g. *The Monitor*) |
-| `newspaper_slug` | `string` | URL-safe slug |
+| `title` | `string` | Human-readable page title (e.g. *The Monitor, 1915-07-03 - Page 1*) |
+| `newspaper_title`| `string` | Clean publication name (e.g. *The Monitor*) |
+| `newspaper_slug` | `string` | URL-safe underscore slug (e.g. *the_monitor*) |
 | `lccn` | `string` | Library of Congress Control Number |
 | `date` | `string` | Publication date (`YYYY-MM-DD`) |
 | `year`, `month`, `day` | `int32` | Date components for numeric filtering |
@@ -70,7 +70,10 @@ Each Parquet record contains:
 | `city`, `state` | `string` | Geographic origin |
 | `ethnicity` | `string` | Subject ethnicity if recorded (e.g. African American) |
 | `char_count`, `word_count` | `int32` | Text length statistics |
-| `loc_item_url` | `string` | Canonical Library of Congress permalink |
+| `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL |
+| `loc_item_url` | `string` | Alias to canonical page viewer URL |
+| `pdf_url` | `string` | Direct Library of Congress page PDF download URL |
+| `image_url` | `string` | Direct high-resolution scan (JP2) URL |
 | `source_batch` | `string` | Exact NDNP source batch identifier for provenance |
 
 ## Quickstart: Loading in Python

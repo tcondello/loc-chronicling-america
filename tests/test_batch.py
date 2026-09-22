@@ -41,4 +41,6 @@ def test_batch_archive_stream(tmp_path: Path):
     assert item.sequence == 1
     assert "Great News" in (item.text or "")
     assert "<alto>" in (item.alto_xml or "")
-    assert item.loc_url == "https://www.loc.gov/item/00225879/1915-07-03/ed-1/seq-1/"
+    assert item.loc_url == "https://www.loc.gov/resource/00225879/1915-07-03/ed-1/?sp=1"
+    assert item.pdf_url == "https://chroniclingamerica.loc.gov/lccn/00225879/1915-07-03/ed-1/seq-1.pdf"
+    assert item.image_url == "https://chroniclingamerica.loc.gov/lccn/00225879/1915-07-03/ed-1/seq-1.jp2"
