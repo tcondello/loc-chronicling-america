@@ -72,6 +72,7 @@ class AltoDocument:
     page_width: Optional[int] = None
     page_height: Optional[int] = None
     measurement_unit: Optional[str] = None
+    ocr_engine: Optional[str] = None
     blocks: List[AltoBlock] = field(default_factory=list)
 
     @property
@@ -95,6 +96,76 @@ class AltoDocument:
         """Extract full plain text in logical reading order."""
         block_texts = [b.text for b in self.blocks if b.text]
         return "\n\n".join(block_texts)
+
+    def to_layout_dict(self) -> dict:
+        """Extract normalized layout bounding boxes (0-1000 scale) for Document AI / Parquet.
+
+        Returns a dictionary containing:
+            - page_width, page_height, page_unit, ocr_engine
+            - words: list of word tokens
+            - boxes: list of [x0, y0, x1, y1] normalized to 0-1000
+            - word_confidences: list of float confidences (0.0 - 1.0)
+            - lines: list of {"box": [x0, y0, x1, y1], "text": str}
+            - blocks: list of {"block_id": str, "box": [x0, y0, x1, y1], "text": str}
+        """
+        pw = max(self.page_width or 1000, 1)
+        ph = max(self.page_height or 1000, 1)
+
+        def norm_box(x: Optional[int], y: Optional[int], w: Optional[int], h: Optional[int]) -> List[int]:
+            vx = max(x or 0, 0)
+            vy = max(y or 0, 0)
+            vw = max(w or 0, 0)
+            vh = max(h or 0, 0)
+            x0 = min(max(int(round((vx / pw) * 1000)), 0), 1000)
+            y0 = min(max(int(round((vy / ph) * 1000)), 0), 1000)
+            x1 = min(max(int(round(((vx + vw) / pw) * 1000)), 0), 1000)
+            y1 = min(max(int(round(((vy + vh) / ph) * 1000)), 0), 1000)
+            return [x0, y0, x1, y1]
+
+        words_list: List[str] = []
+        boxes_list: List[List[int]] = []
+        conf_list: List[float] = []
+        lines_list: List[dict] = []
+        blocks_list: List[dict] = []
+
+        for block in self.blocks:
+            block_lines_text = []
+            for line in block.lines:
+                line_words_text = []
+                for word in line.words:
+                    if not word.content:
+                        continue
+                    words_list.append(word.content)
+                    boxes_list.append(norm_box(word.hpos, word.vpos, word.width, word.height))
+                    conf_list.append(float(word.confidence if word.confidence is not None else 1.0))
+                    line_words_text.append(word.content)
+
+                if line_words_text:
+                    l_text = " ".join(line_words_text)
+                    block_lines_text.append(l_text)
+                    lines_list.append({
+                        "box": norm_box(line.hpos, line.vpos, line.width, line.height),
+                        "text": l_text,
+                    })
+
+            if block_lines_text:
+                blocks_list.append({
+                    "block_id": block.block_id or "",
+                    "box": norm_box(block.hpos, block.vpos, block.width, block.height),
+                    "text": "\n".join(block_lines_text),
+                })
+
+        return {
+            "page_width": self.page_width or 0,
+            "page_height": self.page_height or 0,
+            "page_unit": self.measurement_unit or "inch1200",
+            "ocr_engine": self.ocr_engine or "Unknown",
+            "words": words_list,
+            "boxes": boxes_list,
+            "word_confidences": conf_list,
+            "lines": lines_list,
+            "blocks": blocks_list,
+        }
 
 
 def _safe_int(val: Optional[str]) -> Optional[int]:
@@ -139,6 +210,17 @@ def parse_alto_xml(xml_content: str | bytes) -> AltoDocument:
         if local_tag(elem) == "MeasurementUnit" and elem.text:
             doc.measurement_unit = elem.text.strip()
             break
+
+    # OCR Software / Engine
+    software_parts = []
+    for elem in root.iter():
+        lt = local_tag(elem)
+        if lt == "softwareName" and elem.text and elem.text.strip():
+            software_parts.append(elem.text.strip())
+        elif lt == "softwareVersion" and elem.text and elem.text.strip() and software_parts:
+            software_parts[-1] += f" {elem.text.strip()}"
+    if software_parts:
+        doc.ocr_engine = " / ".join(software_parts[:2])
 
     # Find Page
     for elem in root.iter():

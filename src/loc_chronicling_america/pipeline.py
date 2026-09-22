@@ -68,7 +68,69 @@ PARQUET_PAGE_SCHEMA = pa.schema([
     ("pdf_url", pa.string()),
     ("image_url", pa.string()),
     ("source_batch", pa.string()),
+    ("awardee", pa.string()),
+    ("awardee_code", pa.string()),
+    ("reel_id", pa.string()),
+    ("ocr_engine", pa.string()),
+    ("page_width", pa.int32()),
+    ("page_height", pa.int32()),
+    ("page_unit", pa.string()),
+    ("words", pa.list_(pa.string())),
+    ("boxes", pa.list_(pa.list_(pa.int16()))),
+    ("word_confidences", pa.list_(pa.float32())),
+    (
+        "lines",
+        pa.list_(
+            pa.struct([
+                ("box", pa.list_(pa.int16())),
+                ("text", pa.string()),
+            ])
+        ),
+    ),
+    (
+        "blocks",
+        pa.list_(
+            pa.struct([
+                ("block_id", pa.string()),
+                ("box", pa.list_(pa.int16())),
+                ("text", pa.string()),
+            ])
+        ),
+    ),
 ])
+
+AWARDEE_NAMES: Dict[str, str] = {
+    "vi": "Library of Virginia",
+    "nbu": "University of Nebraska-Lincoln",
+    "iune": "University of Illinois at Urbana-Champaign",
+    "curiv": "University of California, Riverside",
+    "nn": "The New York Public Library",
+    "pst": "Penn State University",
+    "njr": "Rutgers University",
+    "dlc": "Library of Congress",
+    "whi": "Wisconsin Historical Society",
+    "ohi": "Ohio History Connection",
+    "mnhi": "Minnesota Historical Society",
+    "khi": "Kansas Historical Society",
+    "txdn": "University of North Texas",
+    "fu": "University of Florida",
+    "gu": "University of Georgia",
+    "az": "Arizona State Library",
+    "oru": "University of Oregon",
+    "wa": "Washington State Library",
+    "cohi": "History Colorado",
+    "iahi": "State Historical Society of Iowa",
+    "mdu": "University of Maryland",
+    "kyu": "University of Kentucky",
+    "lu": "Louisiana State University",
+    "ncu": "University of North Carolina at Chapel Hill",
+    "scu": "University of South Carolina",
+    "tu": "University of Tennessee",
+    "uuml": "University of Utah",
+    "vtu": "University of Vermont",
+    "wvu": "West Virginia University",
+    "wyu": "University of Wyoming",
+}
 
 
 class BatchPipeline:
@@ -193,8 +255,10 @@ class BatchPipeline:
             pages_count = 0
 
             awardee = batch_info.awardee
+            awardee_code = awardee or "unknown"
+            awardee_full = AWARDEE_NAMES.get(awardee_code.lower(), awardee_code)
 
-            for item in batch_obj.iter_archive(archive_path=tar_path, extract_xml=False):
+            for item in batch_obj.iter_archive(archive_path=tar_path, extract_xml=True):
                 if not item.text:
                     continue
 
@@ -217,6 +281,8 @@ class BatchPipeline:
                 loc_page_url = f"https://www.loc.gov/resource/{item.lccn}/{item.date}/ed-{item.edition}/?sp={item.sequence}"
                 pdf_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.pdf"
                 image_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.jp2"
+
+                layout = item.layout_data or {}
 
                 doc = {
                     "_id": doc_id,
@@ -241,6 +307,18 @@ class BatchPipeline:
                     "pdf_url": pdf_url,
                     "image_url": image_url,
                     "source_batch": batch_name,
+                    "awardee": awardee_full,
+                    "awardee_code": awardee_code,
+                    "reel_id": item.reel_id or "",
+                    "ocr_engine": layout.get("ocr_engine") or "Unknown",
+                    "page_width": layout.get("page_width", 0),
+                    "page_height": layout.get("page_height", 0),
+                    "page_unit": layout.get("page_unit", "inch1200"),
+                    "words": layout.get("words", []),
+                    "boxes": layout.get("boxes", []),
+                    "word_confidences": layout.get("word_confidences", []),
+                    "lines": layout.get("lines", []),
+                    "blocks": layout.get("blocks", []),
                 }
 
                 file_buffers[rel_path].append(doc)

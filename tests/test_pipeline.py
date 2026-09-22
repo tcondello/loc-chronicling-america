@@ -102,6 +102,25 @@ def test_pipeline_parquet_batch_processing(tmp_path):
         info1.size = len(txt_data1)
         tar.addfile(info1, io.BytesIO(txt_data1))
 
+        xml_data1 = b"""<?xml version="1.0" encoding="UTF-8"?>
+<alto xmlns="http://www.loc.gov/standards/alto/ns-v2#">
+  <Layout>
+    <Page ID="P1" HEIGHT="20000" WIDTH="15000">
+      <PrintSpace HPOS="0" VPOS="0" WIDTH="15000" HEIGHT="20000">
+        <TextBlock ID="B1" HPOS="100" VPOS="100" WIDTH="5000" HEIGHT="2000">
+          <TextLine ID="L1" HPOS="100" VPOS="100" WIDTH="4800" HEIGHT="300">
+            <String CONTENT="Front" HPOS="100" VPOS="100" WIDTH="800" HEIGHT="300" WC="0.95" />
+            <String CONTENT="page" HPOS="1000" VPOS="100" WIDTH="800" HEIGHT="300" WC="0.99" />
+          </TextLine>
+        </TextBlock>
+      </PrintSpace>
+    </Page>
+  </Layout>
+</alto>"""
+        x_info1 = tarfile.TarInfo(name="sn85026945/1915/07/03/ed-1/seq-1/ocr.xml")
+        x_info1.size = len(xml_data1)
+        tar.addfile(x_info1, io.BytesIO(xml_data1))
+
         txt_data2 = b"Second page market reports and sports news."
         info2 = tarfile.TarInfo(name="sn85026945/1915/07/03/ed-1/seq-2/ocr.txt")
         info2.size = len(txt_data2)
@@ -152,6 +171,14 @@ def test_pipeline_parquet_batch_processing(tmp_path):
     assert records[0]["loc_page_url"] == "https://www.loc.gov/resource/sn85026945/1915-07-03/ed-1/?sp=1"
     assert records[0]["pdf_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.pdf"
     assert records[0]["image_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.jp2"
+    assert records[0]["awardee"] == "University of Nebraska-Lincoln"
+    assert records[0]["awardee_code"] == "nbu"
+    assert records[0]["words"] == ["Front", "page"]
+    assert len(records[0]["boxes"]) == 2
+    assert len(records[0]["lines"]) == 1
+    assert len(records[0]["blocks"]) == 1
+    assert records[0]["page_width"] == 15000
+    assert records[0]["page_height"] == 20000
 
     # Test master index generation
     jsonl_cat, parquet_cat = pipeline.update_catalog_index()

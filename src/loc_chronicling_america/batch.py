@@ -25,6 +25,8 @@ class ArchivePageItem:
     sequence: int
     text: Optional[str] = None
     alto_xml: Optional[str] = None
+    reel_id: Optional[str] = None
+    layout_data: Optional[Dict[str, Any]] = None
 
     @property
     def date(self) -> str:
@@ -194,10 +196,13 @@ class Batch:
             raise FileNotFoundError(f"Archive not found: {path}")
 
         # Structure inside tar:
-        # {lccn}/{year}/{month}/{day}/ed-{edition}/seq-{seq}/ocr.txt
-        # {lccn}/{year}/{month}/{day}/ed-{edition}/seq-{seq}/ocr.xml
-        path_pattern = re.compile(
-            r"([^/]+)/(\d{4})/(\d{2})/(\d{2})/ed-(\d+)/seq-(\d+)/ocr\.(txt|xml)$"
+        # Standard: {lccn}/{year}/{month}/{day}/ed-{edition}/seq-{seq}/ocr.txt
+        # With reel: {lccn}/{reel}/{year}/{month}/{day}/ed-{edition}/seq-{seq}/ocr.txt
+        pattern_reel = re.compile(
+            r"(?:.*?/)?(?P<lccn>[^/]+)/(?P<reel>\d{7,})/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/ed-(?P<edition>\d+)/seq-(?P<seq>\d+)/ocr\.(?P<ext>txt|xml)$"
+        )
+        pattern_std = re.compile(
+            r"(?:.*?/)?(?P<lccn>[^/]+)/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/ed-(?P<edition>\d+)/seq-(?P<seq>\d+)/ocr\.(?P<ext>txt|xml)$"
         )
 
         pages_dict: Dict[tuple, ArchivePageItem] = {}
@@ -207,11 +212,18 @@ class Batch:
                 if not member.isfile():
                     continue
 
-                m = path_pattern.search(member.name)
+                m = pattern_reel.search(member.name) or pattern_std.search(member.name)
                 if not m:
                     continue
 
-                lccn, year, month, day, ed_str, seq_str, ext = m.groups()
+                lccn = m.group("lccn")
+                reel = m.group("reel") if "reel" in m.groupdict() else None
+                year = m.group("year")
+                month = m.group("month")
+                day = m.group("day")
+                ed_str = m.group("edition")
+                seq_str = m.group("seq")
+                ext = m.group("ext")
                 key = (lccn, year, month, day, int(ed_str), int(seq_str))
 
                 if key not in pages_dict:
@@ -222,9 +234,13 @@ class Batch:
                         day=day,
                         edition=int(ed_str),
                         sequence=int(seq_str),
+                        reel_id=reel,
                     )
 
                 page_item = pages_dict[key]
+                if reel and not page_item.reel_id:
+                    page_item.reel_id = reel
+
                 if ext == "txt":
                     f = tar.extractfile(member)
                     if f:
@@ -232,7 +248,16 @@ class Batch:
                 elif ext == "xml" and extract_xml:
                     f = tar.extractfile(member)
                     if f:
-                        page_item.alto_xml = f.read().decode("utf-8", errors="replace")
+                        xml_bytes = f.read()
+                        page_item.alto_xml = xml_bytes.decode("utf-8", errors="replace")
+                        try:
+                            from loc_chronicling_america.parsers.alto import parse_alto_xml
+                            doc = parse_alto_xml(xml_bytes)
+                            page_item.layout_data = doc.to_layout_dict()
+                            if not page_item.text:
+                                page_item.text = doc.extract_full_text()
+                        except Exception:
+                            pass
 
                 # If both or txt is loaded, yield and clear to save memory
                 if page_item.text is not None and (not extract_xml or page_item.alto_xml is not None):

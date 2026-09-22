@@ -20,13 +20,13 @@ def test_batch_archive_stream(tmp_path: Path):
     txt_content = b"Headline: Great News Today In Omaha"
     xml_content = b"<alto><Page/></alto>"
 
-    # Create synthetic archive
+    # Create synthetic archive with reel_id in path
     with tarfile.open(archive_path, mode="w:bz2") as tar:
-        t_info = tarfile.TarInfo(name="00225879/1915/07/03/ed-1/seq-1/ocr.txt")
+        t_info = tarfile.TarInfo(name="00225879/00175032496/1915/07/03/ed-1/seq-1/ocr.txt")
         t_info.size = len(txt_content)
         tar.addfile(t_info, io.BytesIO(txt_content))
 
-        x_info = tarfile.TarInfo(name="00225879/1915/07/03/ed-1/seq-1/ocr.xml")
+        x_info = tarfile.TarInfo(name="00225879/00175032496/1915/07/03/ed-1/seq-1/ocr.xml")
         x_info.size = len(xml_content)
         tar.addfile(x_info, io.BytesIO(xml_content))
 
@@ -36,11 +36,13 @@ def test_batch_archive_stream(tmp_path: Path):
     assert len(items) == 1
     item = items[0]
     assert item.lccn == "00225879"
+    assert item.reel_id == "00175032496"
     assert item.date == "1915-07-03"
     assert item.edition == 1
     assert item.sequence == 1
     assert "Great News" in (item.text or "")
     assert "<alto>" in (item.alto_xml or "")
+    assert item.layout_data is not None
     assert item.loc_url == "https://www.loc.gov/resource/00225879/1915-07-03/ed-1/?sp=1"
     assert item.pdf_url == "https://chroniclingamerica.loc.gov/lccn/00225879/1915-07-03/ed-1/seq-1.pdf"
     assert item.image_url == "https://chroniclingamerica.loc.gov/lccn/00225879/1915-07-03/ed-1/seq-1.jp2"

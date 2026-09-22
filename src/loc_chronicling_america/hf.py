@@ -75,6 +75,17 @@ Each Parquet record contains:
 | `pdf_url` | `string` | Direct Library of Congress page PDF download URL |
 | `image_url` | `string` | Direct high-resolution scan (JP2) URL |
 | `source_batch` | `string` | Exact NDNP source batch identifier for provenance |
+| `awardee` | `string` | Grantee/institution (e.g. *Library of Virginia*) |
+| `awardee_code` | `string` | Awardee prefix code (e.g. *vi*, *nbu*, *iune*) |
+| `reel_id` | `string` | Microfilm container / reel ID |
+| `ocr_engine` | `string` | OCR software name and version (e.g. *Tesseract 5.4.1*) |
+| `page_width`, `page_height` | `int32` | Physical scan dimensions |
+| `page_unit` | `string` | Scanner measurement unit (e.g. *inch1200*) |
+| `words` | `list<string>` | OCR word tokens in logical reading order |
+| `boxes` | `list<list<int16>>` | Word bounding boxes `[x0, y0, x1, y1]` normalized to `[0, 1000]` |
+| `word_confidences` | `list<float32>` | Word OCR confidence scores (0.0 to 1.0) |
+| `lines` | `list<struct>` | Text lines with normalized `box` and `text` |
+| `blocks` | `list<struct>` | Column/Article blocks with `block_id`, `box`, and `text` |
 
 ## Quickstart: Loading in Python
 
@@ -91,6 +102,21 @@ dataset = load_dataset(
 for doc in dataset["train"].take(5):
     print(doc["_id"], doc["newspaper_title"], doc["date"])
     print(doc["text"][:150])
+```
+
+### Document AI & LayoutLM Usage
+
+Every page contains normalized `[0, 1000]` word bounding boxes and column blocks, directly compatible with Hugging Face `LayoutLMv3`, `LiLT`, and Vision-Language models:
+
+```python
+from datasets import load_dataset
+
+dataset = load_dataset("{repo_id}", "nebraska", streaming=True)
+sample = next(iter(dataset["train"]))
+
+print("Words:", sample["words"][:5])
+print("Boxes (0-1000 scale):", sample["boxes"][:5])
+print("Newspaper Columns (Blocks):", len(sample["blocks"]))
 ```
 
 ### Direct Parquet Querying with DuckDB
