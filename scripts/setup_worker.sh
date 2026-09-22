@@ -11,6 +11,7 @@ if [ -z "${HF_TOKEN}" ]; then
 fi
 
 APP_DIR="/home/ubuntu/loc-chronicling-america"
+git config --global --add safe.directory "${APP_DIR}" || true
 
 echo "=== 1. Writing environment file ==="
 printf "HF_TOKEN=%s\nHF_REPO=%s\nPYTHONUNBUFFERED=1\n" "${HF_TOKEN}" "${HF_REPO}" > "${APP_DIR}/.env"
