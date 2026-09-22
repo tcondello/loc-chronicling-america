@@ -8,21 +8,41 @@ from typing import List, Optional, Tuple
 
 
 DATASET_CARD_TEMPLATE = """---
-license: mit
+license: cc0-1.0
+pretty_name: Chronicling America (US Library of Congress) Historical Newspapers
+language:
+- en
+annotations_creators:
+- machine-generated
+language_creators:
+- found
+multilinguality:
+- multilingual
+size_categories:
+- 10M<n<100M
+source_datasets:
+- extended|other
 task_categories:
 - text-retrieval
+- question-answering
+- token-classification
 - fill-mask
 tags:
 - history
-- newspapers
-- ocr
+- historical-newspapers
 - chronicling-america
 - library-of-congress
+- national-digital-newspaper-program
+- ndnp
+- ocr
+- layoutlm
+- document-ai
 - pinecone
+- vector-search
+- rag
 - digital-humanities
 - us-history
-size_categories:
-- 10M<n<100M
+- parquet
 configs:
   - config_name: default
     data_files: "newspapers/**/*.parquet"
@@ -31,15 +51,31 @@ configs:
 
 # Chronicling America (US Library of Congress) - Parquet Dataset
 
-This dataset contains digitized, OCR-extracted historical American newspapers from the **US Library of Congress Chronicling America / National Digital Newspaper Program (NDNP)**, partitioned into high-performance, columnar **Apache Parquet** files.
+[![License: Public Domain](https://img.shields.io/badge/License-Public_Domain-blue.svg)](https://chroniclingamerica.loc.gov/about/)
+[![Source: Library of Congress](https://img.shields.io/badge/Source-Library%20of%20Congress%20%2F%20NEH-red.svg)](https://chroniclingamerica.loc.gov/)
+[![Format: Apache Parquet](https://img.shields.io/badge/Format-Apache%20Parquet%20(Snappy)-orange.svg)](https://parquet.apache.org/)
+[![Document AI Ready](https://img.shields.io/badge/Document%20AI-LayoutLMv3%20Compatible-green.svg)](https://huggingface.co/docs/transformers/model_doc/layoutlmv3)
 
-## Interactive Dataset Studio / Viewer
+A high-performance, columnar **Apache Parquet** dataset containing digitized, OCR-extracted historical American newspapers from the **US Library of Congress Chronicling America / National Digital Newspaper Program (NDNP)**.
 
-This dataset is fully viewable directly within the **Hugging Face Dataset Viewer / Data Studio**. Use the subset dropdown above to filter by state or explore the entire collection.
+Produced by streaming and transmuting massive Library of Congress preservation archives (`.tar.bz2`, METS/MODS, and ALTO XML) into compact, issue-level Parquet shards partitioned by **state**, **newspaper title**, and **publication year**.
 
-## Dataset Structure
+---
 
-The dataset is partitioned by media type, state, publication, and publication year:
+## 🌟 Key Features
+
+* **Issue-Level Granularity**: Each `.parquet` file represents one complete newspaper issue, preserving page sequence, front-page primacy, and full issue integrity.
+* **Normalized Spatial Coordinates ($[0, 1000]$)**: Word-level bounding boxes are pre-normalized to the standard $[0, 1000]$ coordinate space, ready for out-of-the-box use with **LayoutLMv3**, **LiLT**, and Vision-Language models.
+* **Reading-Order Geometry**: Preserves physical layout structures—words, lines, and article column blocks—resolving the historical "text scramble" caused by multi-column printing.
+* **Zero-Copy Remote Querying**: Query petabyte-scale historical archives directly in seconds using **DuckDB**, **Polars**, or **Hugging Face `datasets`** without downloading entire collections.
+* **Master Discovery Catalog**: Includes `catalog.parquet` (~5 MB), an instant index of every newspaper title, city, state, date range, page count, and demographic classification.
+* **Vector Search Ready**: Direct conversion pipelines available for the **Pinecone Document Schema** to enable hybrid semantic/lexical RAG over 200+ years of American history.
+
+---
+
+## 📂 Dataset Architecture
+
+The repository uses a hierarchical, year-partitioned layout designed to scale effortlessly across millions of issues while respecting Git tree limits:
 
 ```text
 newspapers/
@@ -49,102 +85,163 @@ newspapers/
             └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
 ```
 
-* **`catalog.parquet`**: A lightweight master table (~5 MB) indexing every newspaper title, city, state, publication years, page counts, and demographics for instant discovery.
-* **`newspapers/{state}/{newspaper_slug}/{year}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet`**: Columnar Snappy-compressed Parquet files where each file contains all pages of one issue, with complete plain text OCR and rich bibliographic metadata.
+* **`catalog.parquet`**: Master index table at the root directory containing metadata for all indexed newspapers and issues.
+* **`newspapers/{state}/{newspaper_slug}/{year}/*.parquet`**: Columnar Snappy-compressed Parquet files where each file contains all pages of a specific publication date.
 
-## Document Schema
+---
 
-Each Parquet record contains:
+## 📋 Data Schema
+
+Every page row conforms to the following schema:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
-| `_id` | `string` | Unique record ID: `{lccn}_{date}_ed-{edition}_seq-{sequence}` |
-| `text` | `string` | Full plain text OCR for the page |
+| `_id` | `string` | Canonical record ID: `{lccn}_{date}_ed-{edition}_seq-{sequence}` |
+| `text` | `string` | Full plain text OCR for the page in reading order |
 | `title` | `string` | Human-readable page title (e.g. *The Monitor, 1915-07-03 - Page 1*) |
-| `newspaper_title`| `string` | Clean publication name (e.g. *The Monitor*) |
-| `newspaper_slug` | `string` | URL-safe underscore slug (e.g. *the_monitor*) |
-| `lccn` | `string` | Library of Congress Control Number |
+| `newspaper_title` | `string` | Clean publication name (e.g. *The Monitor*) |
+| `newspaper_slug` | `string` | URL-safe directory slug (e.g. *the_monitor*) |
+| `lccn` | `string` | Library of Congress Control Number (e.g. *00225879*) |
 | `date` | `string` | Publication date (`YYYY-MM-DD`) |
-| `year`, `month`, `day` | `int32` | Date components for numeric filtering |
-| `edition` | `string` | Edition identifier |
-| `sequence` | `int32` | Page number within the issue |
-| `city`, `state` | `string` | Geographic origin |
-| `ethnicity` | `string` | Subject ethnicity if recorded (e.g. African American) |
-| `char_count`, `word_count` | `int32` | Text length statistics |
+| `year`, `month`, `day` | `int32` | Integer date components for fast numeric partition pruning |
+| `edition` | `string` | Issue edition identifier (e.g. `1`) |
+| `sequence` | `int32` | 1-indexed page sequence within the issue |
+| `city`, `state` | `string` | Geographic origin of publication |
+| `ethnicity` | `string` | Subject ethnicity if cataloged (e.g. *African American*, *German*) |
+| `char_count`, `word_count` | `int32` | Text volume statistics |
 | `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL |
-| `loc_item_url` | `string` | Alias to canonical page viewer URL |
-| `pdf_url` | `string` | Direct Library of Congress page PDF download URL |
-| `image_url` | `string` | Direct high-resolution scan (JP2) URL |
-| `source_batch` | `string` | Exact NDNP source batch identifier for provenance |
-| `awardee` | `string` | Grantee/institution (e.g. *Library of Virginia*) |
-| `awardee_code` | `string` | Awardee prefix code (e.g. *vi*, *nbu*, *iune*) |
+| `loc_item_url` | `string` | Canonical persistent LoC resource URL |
+| `pdf_url` | `string` | Direct page PDF download URL on `tile.loc.gov` |
+| `image_url` | `string` | Direct high-resolution master scan (JP2) URL on `tile.loc.gov` |
+| `source_batch` | `string` | Exact NDNP source batch identifier for provenance (e.g. `nbu_indescribablebeast_ver01`) |
+| `awardee` | `string` | Digitizing institution (e.g. *University of Nebraska-Lincoln*) |
+| `awardee_code` | `string` | Awardee prefix code (e.g. `nbu`, `vi`, `iune`) |
 | `reel_id` | `string` | Microfilm container / reel ID |
-| `ocr_engine` | `string` | OCR software name and version (e.g. *Tesseract 5.4.1*) |
-| `page_width`, `page_height` | `int32` | Physical scan dimensions |
+| `ocr_engine` | `string` | OCR software and version recorded in METS (e.g. *ABBYY FineReader / apex-alto 2.0*) |
+| `page_width`, `page_height`| `int32` | Physical scan dimensions in original pixels |
 | `page_unit` | `string` | Scanner measurement unit (e.g. *inch1200*) |
 | `words` | `list<string>` | OCR word tokens in logical reading order |
-| `boxes` | `list<list<int16>>` | Word bounding boxes `[x0, y0, x1, y1]` normalized to `[0, 1000]` |
-| `word_confidences` | `list<float32>` | Word OCR confidence scores (0.0 to 1.0) |
-| `lines` | `list<struct>` | Text lines with normalized `box` and `text` |
-| `blocks` | `list<struct>` | Column/Article blocks with `block_id`, `box`, and `text` |
+| `boxes` | `list<list<int16>>` | Word bounding boxes `[x0, y0, x1, y1]` normalized to $[0, 1000]$ integer space |
+| `word_confidences` | `list<float32>` | Word OCR confidence scores ($0.0$ to $1.0$) |
+| `lines` | `list<struct>` | Text line structures with `box: [x0, y0, x1, y1]` and `text` |
+| `blocks` | `list<struct>` | Column / article blocks with `block_id`, `box`, and `text` |
 
-## Quickstart: Loading in Python
+---
+
+## 💻 Code Recipes
+
+### 1. Streaming with Hugging Face `datasets`
+
+Stream issues on-demand without downloading the entire multi-gigabyte dataset:
 
 ```python
 from datasets import load_dataset
 
-# 1. Stream all newspapers from a state (e.g. Nebraska)
+# Stream newspaper pages for a specific state
 dataset = load_dataset(
     "{repo_id}",
     "nebraska",
-    streaming=True
+    streaming=True,
+    split="train",
 )
 
-for doc in dataset["train"].take(5):
-    print(doc["_id"], doc["newspaper_title"], doc["date"])
-    print(doc["text"][:150])
+for sample in dataset.take(3):
+    print(f"Publication : {sample['newspaper_title']} ({sample['date']})")
+    print(f"Page        : {sample['sequence']} of issue")
+    print(f"Headline    : {sample['lines'][0]['text'] if sample['lines'] else 'N/A'}")
+    print(f"Sample Text : {sample['text'][:200]}...")
+    print("-" * 60)
 ```
 
-### Document AI & LayoutLM Usage
+### 2. Zero-Copy Remote SQL with DuckDB
 
-Every page contains normalized `[0, 1000]` word bounding boxes and column blocks, directly compatible with Hugging Face `LayoutLMv3`, `LiLT`, and Vision-Language models:
-
-```python
-from datasets import load_dataset
-
-dataset = load_dataset("{repo_id}", "nebraska", streaming=True)
-sample = next(iter(dataset["train"]))
-
-print("Words:", sample["words"][:5])
-print("Boxes (0-1000 scale):", sample["boxes"][:5])
-print("Newspaper Columns (Blocks):", len(sample["blocks"]))
-```
-
-### Direct Parquet Querying with DuckDB
+Query across millions of historical pages directly over HTTP/S3 with full predicate pushdown:
 
 ```python
 import duckdb
 
-# Query across all California newspapers without downloading the full dataset
 con = duckdb.connect()
-df = con.execute(\"\"\"
-    SELECT newspaper_title, date, text
-    FROM 'hf://datasets/{repo_id}/newspapers/california/**/*.parquet'
-    WHERE year = 1906 AND text ILIKE '%earthquake%'
-    LIMIT 10
-\"\"\").df()
+
+# Query across all California issues for 1906 San Francisco earthquake coverage
+query = \"\"\"
+SELECT 
+    newspaper_title,
+    date,
+    city,
+    substring(text, 1, 200) AS excerpt
+FROM 'hf://datasets/{repo_id}/newspapers/california/**/*.parquet'
+WHERE year = 1906 
+  AND text ILIKE '%earthquake%'
+ORDER BY date ASC
+LIMIT 10;
+\"\"\"
+
+df = con.execute(query).df()
 print(df)
 ```
 
-## Importing into Pinecone
+### 3. High-Speed Columnar Analysis with Polars
 
-To import into Pinecone, use the included conversion utility `examples/07_convert_parquet_to_pinecone.py` to produce standard Pinecone Document Schema JSONL files:
+Scan partitioned Parquet files directly with Polars for sub-second timeline aggregations:
 
-```bash
-python examples/07_convert_parquet_to_pinecone.py --input newspapers/nebraska/ --output pinecone_import/
+```python
+import polars as pl
+
+# Scan dataset lazily using glob expressions
+q = (
+    pl.scan_parquet("hf://datasets/{repo_id}/newspapers/nebraska/**/*.parquet")
+    .filter(pl.col("year") >= 1900)
+    .group_by("year")
+    .agg([
+        pl.count().alias("page_count"),
+        pl.col("word_count").sum().alias("total_words"),
+    ])
+    .sort("year")
+)
+
+df = q.collect()
+print(df)
 ```
 
-Sync `pinecone_import/` to cloud storage (S3/GCS/Azure), then run Pinecone Bulk Import:
+### 4. Document AI: LayoutLMv3 & Vision-Language Modeling
+
+Every record includes pre-normalized $[0, 1000]$ integer bounding boxes, ready for direct ingestion by LayoutLMv3:
+
+```python
+from transformers import LayoutLMv3Processor
+
+processor = LayoutLMv3Processor.from_pretrained("microsoft/layoutlmv3-base", apply_ocr=False)
+
+# Assuming 'sample' is a row from the dataset:
+words = sample["words"][:512]
+boxes = sample["boxes"][:512]
+
+# Format inputs for model forward pass
+encoding = processor(
+    images=None,  # Or pass PIL image downloaded from sample['image_url']
+    text=words,
+    boxes=boxes,
+    return_tensors="pt",
+    truncation=True,
+    max_length=512,
+)
+
+print("Input IDs shape:", encoding["input_ids"].shape)
+print("BBoxes shape   :", encoding["bbox"].shape)
+```
+
+### 5. Vector Search with Pinecone Bulk Import
+
+Convert Parquet files into standard Pinecone Document Schema JSONL files using the included conversion script:
+
+```bash
+python examples/07_convert_parquet_to_pinecone.py \\
+    --input ./export_data/newspapers/nebraska/ \\
+    --output ./pinecone_import/ \\
+    --chunk-lines 100000
+```
+
+Upload `pinecone_import/` to cloud storage (S3/GCS/Azure) and trigger Pinecone Bulk Import:
 
 ```python
 from pinecone import Pinecone, ImportErrorMode
@@ -152,14 +249,40 @@ from pinecone import Pinecone, ImportErrorMode
 pc = Pinecone()
 index = pc.Index(host="YOUR_INDEX_HOST")
 
-index.start_import(
-    uri="s3://my-bucket/chronicling-america/pinecone_import",
-    error_mode=ImportErrorMode.CONTINUE
+# Start asynchronous serverless bulk import
+import_job = index.start_import(
+    uri="s3://my-bucket/pinecone_import/",
+    error_mode=ImportErrorMode.CONTINUE,
 )
+print(f"Bulk Import Job Started: {import_job.id}")
 ```
 
-## Source & Attribution
-Data digitized and curated by the **Library of Congress** and the **National Endowment for the Humanities** under the National Digital Newspaper Program (NDNP). Distributed in the public domain.
+---
+
+## 🏛️ Source & Attribution
+
+Data digitized and curated by the **Library of Congress** and the **National Endowment for the Humanities (NEH)** under the **National Digital Newspaper Program (NDNP)**.
+
+* **Collection Homepage**: [https://chroniclingamerica.loc.gov/](https://chroniclingamerica.loc.gov/)
+* **Copyright & Rights**: Historical newspapers digitized under NDNP were published prior to 1963 and are in the **Public Domain**. United States government contributions are not subject to copyright protection under Title 17 U.S.C. § 105.
+* **Pipeline Source Code**: [https://github.com/tcondello/loc-chronicling-america](https://github.com/tcondello/loc-chronicling-america) (MIT License).
+
+---
+
+## 📖 Citation
+
+If you use this dataset or tooling in your research, blog posts, or applications, please cite:
+
+```bibtex
+@dataset{chronicling_america_parquet_2026,
+  author       = {Condello, Tim},
+  title        = {Chronicling America: Nationwide Partitioned Apache Parquet Newspaper Dataset},
+  year         = {2026},
+  publisher    = {Hugging Face},
+  version      = {1.0.0},
+  url          = {https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America}
+}
+```
 """
 
 

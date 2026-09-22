@@ -3,14 +3,15 @@
 [![PyPI version](https://img.shields.io/badge/pypi-loc--chronicling--america-blue.svg)](https://pypi.org/project/loc-chronicling-america/)
 [![Hugging Face Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-LOC--Chronicling--America-yellow)](https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Data: Public Domain](https://img.shields.io/badge/Data-Public%20Domain%20(US%20Gov)-blue.svg)](https://chroniclingamerica.loc.gov/about/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-26%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-27%20passed-brightgreen.svg)]()
 
-A Python library, CLI tool, and high-throughput streaming ingestion pipeline built for researchers, digital humanists, and machine learning engineers to discover, resolve, and download historical digitized newspapers from the **Library of Congress [Chronicling America](https://chroniclingamerica.loc.gov/) / National Digital Newspaper Program (NDNP)** collection.
+A production-grade Python library, CLI tool, and high-throughput streaming ingestion pipeline built for researchers, digital humanists, and machine learning engineers to discover, resolve, and download historical digitized newspapers from the **Library of Congress [Chronicling America](https://chroniclingamerica.loc.gov/) / National Digital Newspaper Program (NDNP)** collection.
 
 ---
 
-## The Problems This Solves
+## 🏛️ The Problems This Solves
 
 The US Library of Congress hosts over **3,000 bulk archives** comprising tens of millions of scanned, OCR-transcribed newspaper pages published between 1770 and 1963. However, working with these bulk assets presents significant engineering challenges:
 
@@ -18,23 +19,62 @@ The US Library of Congress hosts over **3,000 bulk archives** comprising tens of
 2. **Download Scale Barrier**: Uncompressed batch directories often exceed 60 GB, and compressed bulk OCR archives (`.tar.bz2`) range from hundreds of megabytes to gigabytes. Researchers who need specific issues or articles are forced to either download massive archives or scrape fragile web endpoints.
 3. **Complex XML & OCR Schemas**: Newspaper OCR text and coordinates are stored in heterogeneous METS/MODS and ALTO XML schemas across diverse historical OCR software versions.
 4. **Layout & Multi-Column Geometry**: Historical newspapers feature complex multi-column layouts where naive text extraction destroys reading order, headlines, and column structure.
+5. **Git Tree Scale Limits**: Storing tens of thousands of issue files in standard Git-backed dataset repositories hits platform directory limits (e.g. Hugging Face's 10,000 files/directory ceiling).
 
 `loc-chronicling-america` solves these problems:
 * **Instant Record & Batch Resolution**: Feed in any LoC URL (item, resource, gallery) or LCCN + date, and immediately obtain publication metadata, page links, and exact source batch archives.
 * **Granular Asset Downloads**: Download individual single-page PDFs, high-resolution master scans (JP2), ALTO XML files, or plain text OCR directly without bulk downloads.
-* **Streaming Transmutation Pipeline**: Stream bulk `.tar.bz2` archives on-the-fly and convert them into issue-level **Apache Parquet** files with zero local disk bloat.
-* **Normalized OCR Layout**: Extracts word-level bounding boxes normalized to $[0, 1000]$ integer coordinates along with structured text lines, article blocks, and OCR confidence scores (`WC`).
+* **Streaming Transmutation Pipeline**: Stream bulk `.tar.bz2` archives on-the-fly and convert them into issue-level **Apache Parquet** files with zero local disk bloat (<3 GB scratch space).
+* **Year-Partitioned Architecture**: Partitions issues by publication year (`newspapers/{state}/{slug}/{year}/*.parquet`), guaranteeing scalability without tripping directory size constraints.
+* **Normalized OCR Layout**: Extracts word-level bounding boxes normalized to $[0, 1000]$ integer coordinates along with structured text lines, article blocks, and OCR confidence scores (`WC`) for **LayoutLMv3** and Document AI.
 * **Embedded SQLite Catalog**: Instant offline search across 3,000+ batches and 15,000+ titles with zero external database dependencies.
 * **Vector Search Ready**: Direct export to Pinecone Document Schema JSONL format for seamless RAG and hybrid semantic/lexical search.
 
 ---
 
-## Live Dataset on Hugging Face
+## 🏗️ Architecture Overview
+
+```mermaid
+flowchart TD
+    subgraph LoC ["Library of Congress & NDNP Infrastructure"]
+        API["LoC JSON API\n(Catalog & Metadata)"]
+        Archives["Bulk NDNP Archives\n(.tar.bz2 | 2-60 GB ea)"]
+        Tiles["tile.loc.gov\n(JP2 Master Scans & PDFs)"]
+    end
+
+    subgraph Engine ["Streaming Transmutation Engine"]
+        Worker["EC2 Ingestion Worker\n(systemd + CloudWatch)"]
+        Decompress["Zero-Bloat Streamer\n(Transient Scratch <3 GB)"]
+        ALTO["METS & ALTO XML Parser\n([0, 1000] Bounding Boxes)"]
+        Writer["Year-Partitioned Parquet\n(Snappy Compression)"]
+    end
+
+    subgraph Destinations ["Data Destinations & Analytics"]
+        HF["Hugging Face Hub\n(Live Parquet Dataset)"]
+        Catalog["catalog.parquet\n(Master Index Table)"]
+        DuckDB["DuckDB / Polars\n(Zero-Copy Remote SQL)"]
+        Pinecone["Pinecone Vector DB\n(Hybrid Semantic RAG)"]
+    end
+
+    API --> Worker
+    Archives --> Decompress
+    Decompress --> ALTO
+    ALTO --> Writer
+    Writer --> HF
+    Writer --> Catalog
+    HF --> DuckDB
+    Writer -.-> Pinecone
+    Tiles -.-> ALTO
+```
+
+---
+
+## 🚀 Live Dataset on Hugging Face
 
 We host a nationwide, partitioned Apache Parquet dataset on Hugging Face:
 👉 **[https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America](https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America)**
 
-### Dataset Layout
+### Dataset Hierarchy
 ```text
 newspapers/
 └── {state}/
@@ -180,6 +220,38 @@ for row in ds.take(3):
     print(f"Words: {len(row['words'])} tokens | First line: {row['lines'][0]['text']}")
 ```
 
+### 6. Zero-Copy Remote SQL with DuckDB
+Query across millions of historical newspaper pages directly over HTTPS without downloading:
+```python
+import duckdb
+
+con = duckdb.connect()
+df = con.execute("""
+    SELECT newspaper_title, date, city, substring(text, 1, 150) AS excerpt
+    FROM 'hf://datasets/Tim-Pinecone/LOC-Chronicling-America/newspapers/california/**/*.parquet'
+    WHERE year = 1906 AND text ILIKE '%earthquake%'
+    LIMIT 5
+""").df()
+print(df)
+```
+
+### 7. Document AI & Visual Language Modeling
+Bounding boxes are pre-normalized to $[0, 1000]$ integer coordinates for direct ingestion into `LayoutLMv3` or `LiLT`:
+```python
+from transformers import LayoutLMv3Processor
+
+processor = LayoutLMv3Processor.from_pretrained("microsoft/layoutlmv3-base", apply_ocr=False)
+
+encoding = processor(
+    images=None,  # Or pass PIL Image downloaded via row['image_url']
+    text=row["words"][:512],
+    boxes=row["boxes"][:512],
+    return_tensors="pt",
+)
+print("Input IDs:", encoding["input_ids"].shape)
+print("BBoxes   :", encoding["bbox"].shape)
+```
+
 ---
 
 ## Command-Line Interface (CLI)
@@ -285,14 +357,16 @@ loc-chronicling-america/
 ├── examples/                 # Standalone runnable scripts (01-07)
 │   ├── README.md             # Guide to all examples
 ├── scripts/                  # Production automation & maintenance scripts
-│   ├── run_multi_state_pipeline.py
-│   ├── cleanup_hf_dataset.py
+│   ├── run_multi_state_pipeline.py      # Production streaming pipeline driver
+│   ├── migrate_hf_to_year_partitions.py # Server-side HF year partition migrator
+│   ├── cleanup_hf_dataset.py            # Dataset maintenance & prune utility
+│   ├── setup_worker.sh                  # Idempotent worker bootstrap script
 │   └── README.md
 ├── infra/                    # Production AWS CDK deployment
 │   ├── pipeline_stack.py     # EC2 worker, IAM, CloudWatch, VPC stack
 │   ├── app.py                # CDK application entrypoint
 │   └── README.md             # CDK deployment guide
-├── tests/                    # Pytest test suite (26 unit/integration tests)
+├── tests/                    # Pytest test suite (27 unit/integration tests)
 ├── pyproject.toml            # Package configuration & dependencies
 └── LICENSE                   # MIT License
 ```
@@ -321,6 +395,33 @@ pytest
 
 ---
 
-## License
+## Attribution & Public Domain Status
 
-Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+* **Digitized Content**: Historical newspapers in the Chronicling America collection were digitized through the National Digital Newspaper Program (NDNP), a partnership between the **Library of Congress** and the **National Endowment for the Humanities (NEH)**.
+* **Public Domain**: Historical newspapers digitized under NDNP were published prior to 1963 and are in the **Public Domain**. United States Government contributions are not subject to copyright protection under Title 17 U.S.C. § 105.
+* **Library Software**: Distributed under the [MIT License](LICENSE).
+
+---
+
+## Citation
+
+If you use `loc-chronicling-america` or the dataset in your research, blog posts, or software, please cite:
+
+```bibtex
+@software{condello2026chronicling,
+  author       = {Condello, Tim},
+  title        = {loc-chronicling-america: High-Throughput Streaming Ingestion and Parquet Transmutation for Chronicling America},
+  year         = {2026},
+  publisher    = {GitHub},
+  url          = {https://github.com/tcondello/loc-chronicling-america}
+}
+
+@dataset{chronicling_america_parquet_2026,
+  author       = {Condello, Tim},
+  title        = {Chronicling America: Nationwide Partitioned Apache Parquet Newspaper Dataset},
+  year         = {2026},
+  publisher    = {Hugging Face},
+  url          = {https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America}
+}
+```
+

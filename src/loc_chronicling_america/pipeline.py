@@ -531,11 +531,25 @@ class BatchPipeline:
         # Update Hugging Face README and catalog if configured
         if self.hf_manager:
             readme_path = self.output_dir / "README.md"
-            states: List[str] = []
+            states_set = set()
             newspapers_dir = self.output_dir / "newspapers"
             if newspapers_dir.exists():
-                states = [d.name for d in newspapers_dir.iterdir() if d.is_dir()]
+                states_set.update(d.name for d in newspapers_dir.iterdir() if d.is_dir())
 
+            # Also check remote repository so purged local directories are retained
+            try:
+                from huggingface_hub import HfApi
+                api = HfApi(token=self.hf_manager.token)
+                repo_files = api.list_repo_files(repo_id=self.hf_manager.repo_id, repo_type="dataset")
+                for f in repo_files:
+                    if f.startswith("newspapers/"):
+                        p = f.split("/")
+                        if len(p) > 2:
+                            states_set.add(p[1])
+            except Exception:
+                pass
+
+            states = sorted(list(states_set))
             self.hf_manager.generate_readme(readme_path, states=states)
             self.hf_manager.upload_file(readme_path, "README.md")
             if (self.output_dir / "catalog.parquet").exists():
