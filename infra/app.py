@@ -16,10 +16,22 @@ hf_repo = app.node.try_get_context("hf_repo") or os.environ.get("HF_REPO", "Tim-
 instance_type = app.node.try_get_context("instance_type") or "c6i.xlarge"
 volume_size_gb = int(app.node.try_get_context("volume_size_gb") or 100)
 
-env = cdk.Environment(
-    account=os.environ.get("CDK_DEFAULT_ACCOUNT"),
-    region=os.environ.get("CDK_DEFAULT_REGION", "us-east-1"),
+account = (
+    app.node.try_get_context("account")
+    or os.environ.get("CDK_DEFAULT_ACCOUNT")
+    or os.environ.get("AWS_ACCOUNT_ID")
 )
+region = (
+    app.node.try_get_context("region")
+    or os.environ.get("CDK_DEFAULT_REGION")
+    or os.environ.get("AWS_REGION")
+    or os.environ.get("AWS_DEFAULT_REGION")
+    or "us-east-1"
+)
+
+# Only construct Environment if account is explicitly resolved;
+# otherwise pass env=None for an environment-agnostic stack.
+env = cdk.Environment(account=account, region=region) if account else None
 
 ChronAmPipelineStack(
     app,

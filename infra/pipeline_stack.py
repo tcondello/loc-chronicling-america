@@ -189,8 +189,6 @@ class ChronAmPipelineStack(Stack):
                     volume=ec2.BlockDeviceVolume.ebs(
                         volume_size=volume_size_gb,
                         volume_type=ec2.EbsDeviceVolumeType.GP3,
-                        iops=3000,
-                        throughput=125,
                     ),
                 )
             ],
