@@ -26,44 +26,18 @@ python scripts/run_multi_state_pipeline.py --all-states --purge-local-after-uplo
 
 ---
 
-### 2. `cleanup_hf_dataset.py`
-Administrative dataset utility for Hugging Face repository owners. Safely cleans legacy chunks, prunes obsolete directories, and resets local SQLite pipeline queue states.
-
-**Usage:**
-```bash
-python scripts/cleanup_hf_dataset.py --repo "Tim-Pinecone/LOC-Chronicling-America"
-```
-
----
-
-### 3. `migrate_hf_to_year_partitions.py`
-Server-side dataset reorganization utility that moves flat Parquet files (`newspapers/{state}/{newspaper}/*.parquet`) into year-partitioned hierarchies (`newspapers/{state}/{newspaper}/{year}/*.parquet`) using `CommitOperationCopy` and `CommitOperationDelete`. Requires **zero local downloads or network bandwidth**.
-
-**Key Features:**
-* Solves the Hugging Face 10,000 files/directory platform limit.
-* Supports targeted migration by newspaper slug (e.g. `--newspaper omaha_daily_bee`) or state.
-* Batched commits with exponential backoff retry.
-* Built-in `--dry-run` validation.
-
-**Usage:**
-```bash
-# Dry run to preview moves
-python scripts/migrate_hf_to_year_partitions.py --dry-run
-
-# Migrate a specific high-volume newspaper
-python scripts/migrate_hf_to_year_partitions.py --newspaper omaha_daily_bee --batch-size 250
-
-# Migrate all remaining flat files
-python scripts/migrate_hf_to_year_partitions.py --batch-size 250
-```
-
----
-
-### 4. `setup_worker.sh`
+### 2. `setup_worker.sh`
 Idempotent bootstrapping script for remote EC2 or bare-metal Linux workers. Configures Hugging Face credentials, installs the official Amazon CloudWatch agent, sets up the auto-restarting systemd unit (`loc-pipeline.service`), and configures multi-user Git safety.
 
 **Usage:**
 ```bash
 sudo bash scripts/setup_worker.sh <HF_TOKEN> [HF_REPO]
 ```
+
+---
+
+## Historical / One-Off Scripts
+
+One-off migration and housekeeping utilities (e.g. `migrate_hf_to_year_partitions.py` and `cleanup_hf_dataset.py`) have been retired to the [`archive/`](../archive/) directory.
+
 

@@ -358,9 +358,11 @@ loc-chronicling-america/
 │   ├── README.md             # Guide to all examples
 ├── scripts/                  # Production automation & maintenance scripts
 │   ├── run_multi_state_pipeline.py      # Production streaming pipeline driver
+│   ├── setup_worker.sh                  # Idempotent worker bootstrap script
+│   └── README.md
+├── archive/                  # Historical migration & maintenance scripts
 │   ├── migrate_hf_to_year_partitions.py # Server-side HF year partition migrator
 │   ├── cleanup_hf_dataset.py            # Dataset maintenance & prune utility
-│   ├── setup_worker.sh                  # Idempotent worker bootstrap script
 │   └── README.md
 ├── infra/                    # Production AWS CDK deployment
 │   ├── pipeline_stack.py     # EC2 worker, IAM, CloudWatch, VPC stack
