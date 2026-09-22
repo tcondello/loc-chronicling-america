@@ -84,6 +84,18 @@ def main():
         except Exception as e:
             print(f"!!! Error processing state {state}: {e}", flush=True)
 
+    # Finalize catalog index and Hugging Face Dataset Card for all processed states
+    print("\nFinalizing master catalog and Hugging Face Dataset Card...", flush=True)
+    pipeline.update_catalog_index()
+    if pipeline.hf_manager:
+        readme_path = pipeline.output_dir / "README.md"
+        states = [d.name for d in (pipeline.output_dir / "newspapers").iterdir() if d.is_dir()]
+        pipeline.hf_manager.generate_readme(readme_path, states=sorted(states))
+        pipeline.hf_manager.upload_file(readme_path, "README.md")
+        cat_p = pipeline.output_dir / "catalog.parquet"
+        if cat_p.exists():
+            pipeline.hf_manager.upload_file(cat_p, "catalog.parquet")
+
     overall_elapsed = time.time() - overall_start
 
     print("\n" + "=" * 80, flush=True)
