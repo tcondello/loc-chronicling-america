@@ -105,3 +105,12 @@ def test_catalog_db_downloads(tmp_path: Path):
     dls = db.list_downloads(batch_name="nbu_indescribablebeast_ver01")
     assert len(dls) == 1
     assert dls[0].lccn == "00225879"
+
+
+def test_chronicling_america_with_catalog_db(tmp_path: Path):
+    from loc_chronicling_america.client import ChroniclingAmerica
+    db_file = tmp_path / "test_catalog.sqlite"
+    db = CatalogDB(db_file)
+    client = ChroniclingAmerica(catalog_db=db)
+    assert client.catalog is db
+

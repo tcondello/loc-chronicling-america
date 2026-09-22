@@ -20,9 +20,10 @@ class ChroniclingAmerica:
         db_path: Optional[Path | str] = None,
         downloader: Optional[Downloader] = None,
         auto_init_catalog: bool = False,
+        catalog_db: Optional[CatalogDB] = None,
     ):
         self.downloader = downloader or get_default_downloader()
-        self.catalog = CatalogDB(db_path=db_path)
+        self.catalog = catalog_db if catalog_db is not None else CatalogDB(db_path=db_path)
         self.resolver = RecordResolver(downloader=self.downloader)
 
         if auto_init_catalog and self.catalog.count_batches() == 0:

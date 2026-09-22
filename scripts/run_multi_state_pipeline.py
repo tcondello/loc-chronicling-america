@@ -46,7 +46,7 @@ def main():
     if pipeline.db.count_batches() == 0:
         print("Catalog database is empty. Auto-synchronizing metadata from Library of Congress...", flush=True)
         from loc_chronicling_america.client import ChroniclingAmerica
-        client = ChroniclingAmerica(catalog_db=pipeline.db)
+        client = ChroniclingAmerica(catalog_db=pipeline.db, db_path=pipeline.db.db_path)
         b_count = client.sync_batches()
         t_count = client.sync_titles()
         print(f"✓ Initialized catalog with {b_count:,} batches and {t_count:,} titles.", flush=True)
