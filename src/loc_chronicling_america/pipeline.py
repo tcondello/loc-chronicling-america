@@ -271,9 +271,9 @@ class BatchPipeline:
                 month_int = int(item.month) if str(item.month).isdigit() else 0
                 day_int = int(item.day) if str(item.day).isdigit() else 0
 
-                # Issue-level Parquet: newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet
+                # Issue-level Parquet: newspapers/{state}/{newspaper_slug}/{year}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet
                 filename = f"{state_slug}_{newspaper_slug}_{year_int:04d}_{month_int:02d}_{day_int:02d}.parquet"
-                rel_path = f"newspapers/{state_slug}/{newspaper_slug}/{filename}"
+                rel_path = f"newspapers/{state_slug}/{newspaper_slug}/{year_int:04d}/{filename}"
 
                 doc_id = f"{item.lccn}_{item.date}_ed-{item.edition}_seq-{item.sequence}"
 
@@ -382,9 +382,12 @@ class BatchPipeline:
         # Gather metadata on all generated newspaper titles
         titles_summary: Dict[str, Dict[str, Any]] = {}
 
-        for pq_file in sorted(newspapers_dir.glob("*/*/*.parquet")):
-            state_slug = pq_file.parent.parent.name
-            title_slug = pq_file.parent.name
+        for pq_file in sorted(newspapers_dir.glob("**/*.parquet")):
+            rel_parts = pq_file.relative_to(newspapers_dir).parts
+            if len(rel_parts) < 2:
+                continue
+            state_slug = rel_parts[0]
+            title_slug = rel_parts[1]
 
             # Read first row to extract canonical metadata
             lccn = None

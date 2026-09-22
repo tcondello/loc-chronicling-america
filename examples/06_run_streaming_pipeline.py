@@ -64,7 +64,7 @@ def main():
     news_dir = out_dir / "newspapers"
     if news_dir.exists():
         print("\nGenerated State & Newspaper Issue Parquet Hierarchy:")
-        for p_file in sorted(news_dir.glob("*/*/*.parquet"))[:10]:
+        for p_file in sorted(news_dir.glob("**/*.parquet"))[:10]:
             size_kb = p_file.stat().st_size / 1024
             print(f"  ✓ {p_file.relative_to(out_dir)} ({size_kb:.1f} KB)")
 

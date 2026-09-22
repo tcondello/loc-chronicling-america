@@ -106,6 +106,7 @@ class ChronAmPipelineStack(Stack):
             "# 3. Clone Repository into ubuntu user home",
             "USER_HOME=/home/ubuntu",
             "APP_DIR=${USER_HOME}/loc-chronicling-america",
+            "git config --global --add safe.directory \"${APP_DIR}\" || true",
             "if [ ! -d \"${APP_DIR}\" ]; then",
             "    git clone https://github.com/tcondello/loc-chronicling-america.git \"${APP_DIR}\"",
             "    chown -R ubuntu:ubuntu \"${APP_DIR}\"",
@@ -180,7 +181,7 @@ class ChronAmPipelineStack(Stack):
         # 7. EC2 Worker Instance (High Network Throughput & NVMe/GP3 SSD)
         instance = ec2.Instance(
             self,
-            "ChronAmWorkerV2",
+            "ChronAmWorkerV3",
             instance_type=ec2.InstanceType(instance_type),
             machine_image=ubuntu_ami,
             vpc=vpc,

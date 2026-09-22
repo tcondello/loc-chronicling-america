@@ -147,8 +147,8 @@ def test_pipeline_parquet_batch_processing(tmp_path):
     assert pages_extracted == 2
     assert len(written_files) == 1
 
-    # Verify output hierarchy: newspapers/nebraska/the_evening_herald/nebraska_the_evening_herald_1915_07_03.parquet
-    expected_rel_path = "newspapers/nebraska/the_evening_herald/nebraska_the_evening_herald_1915_07_03.parquet"
+    # Verify output hierarchy: newspapers/nebraska/the_evening_herald/1915/nebraska_the_evening_herald_1915_07_03.parquet
+    expected_rel_path = "newspapers/nebraska/the_evening_herald/1915/nebraska_the_evening_herald_1915_07_03.parquet"
     assert written_files[0] == expected_rel_path
     expected_file = out_dir / written_files[0]
     assert expected_file.exists()
@@ -205,4 +205,4 @@ def test_hf_dataset_card_generation(tmp_path):
     assert "config_name: default" in content
     assert "config_name: california" in content
     assert "config_name: nebraska" in content
-    assert "newspapers/california/*/*.parquet" in content
+    assert "newspapers/california/**/*.parquet" in content

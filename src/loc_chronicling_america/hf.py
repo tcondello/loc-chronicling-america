@@ -25,7 +25,7 @@ size_categories:
 - 10M<n<100M
 configs:
   - config_name: default
-    data_files: "newspapers/*/*/*.parquet"
+    data_files: "newspapers/**/*.parquet"
 {state_configs}
 ---
 
@@ -39,17 +39,18 @@ This dataset is fully viewable directly within the **Hugging Face Dataset Viewer
 
 ## Dataset Structure
 
-The dataset is partitioned by media type, state, and publication:
+The dataset is partitioned by media type, state, publication, and publication year:
 
 ```text
 newspapers/
 └── {state}/
     └── {newspaper_slug}/
-        └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
+        └── {year}/
+            └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
 ```
 
 * **`catalog.parquet`**: A lightweight master table (~5 MB) indexing every newspaper title, city, state, publication years, page counts, and demographics for instant discovery.
-* **`newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet`**: Columnar Snappy-compressed Parquet files where each file contains all pages of one issue, with complete plain text OCR and rich bibliographic metadata.
+* **`newspapers/{state}/{newspaper_slug}/{year}/{state}_{newspaper_slug}_{year}_{month}_{day}.parquet`**: Columnar Snappy-compressed Parquet files where each file contains all pages of one issue, with complete plain text OCR and rich bibliographic metadata.
 
 ## Document Schema
 
@@ -128,7 +129,7 @@ import duckdb
 con = duckdb.connect()
 df = con.execute(\"\"\"
     SELECT newspaper_title, date, text
-    FROM 'hf://datasets/{repo_id}/newspapers/california/*/*.parquet'
+    FROM 'hf://datasets/{repo_id}/newspapers/california/**/*.parquet'
     WHERE year = 1906 AND text ILIKE '%earthquake%'
     LIMIT 10
 \"\"\").df()
@@ -193,7 +194,7 @@ class HuggingFaceDatasetManager:
         if states:
             for st in sorted(states):
                 clean_st = st.lower().replace(" ", "-")
-                state_config_lines.append(f"  - config_name: {clean_st}\n    data_files: \"newspapers/{clean_st}/*/*.parquet\"")
+                state_config_lines.append(f"  - config_name: {clean_st}\n    data_files: \"newspapers/{clean_st}/**/*.parquet\"")
 
         state_configs_str = "\n".join(state_config_lines)
         content = DATASET_CARD_TEMPLATE.replace("{repo_id}", self.repo_id)

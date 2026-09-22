@@ -39,7 +39,8 @@ We host a nationwide, partitioned Apache Parquet dataset on Hugging Face:
 newspapers/
 └── {state}/
     └── {newspaper_slug}/
-        └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
+        └── {year}/
+            └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
 ```
 
 * **Issue-Level Shards**: Each `.parquet` file contains all pages of a specific publication date, compressed with Snappy.
