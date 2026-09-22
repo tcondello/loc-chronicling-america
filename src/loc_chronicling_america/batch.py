@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import io
+import os
 import re
 import tarfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from .downloader import Downloader, get_default_downloader
 from .models import BatchInfo
+from .parsers.alto import parse_alto_to_layout_dict
 from .parsers.mets import BatchIssueRef, parse_batch_manifest
 
 
@@ -176,17 +180,22 @@ class Batch:
         self,
         archive_path: Optional[Path | str] = None,
         extract_xml: bool = False,
+        max_workers: Optional[int] = None,
+        chunk_size: int = 64,
     ) -> Iterator[ArchivePageItem]:
         """Iterate over all pages directly from a downloaded or streamed .tar.bz2 archive.
 
-        Does NOT require extracting gigabytes of files to disk.
+        Does NOT require extracting gigabytes of files to disk. Uses multi-process
+        parallelism across CPU cores for high-speed ALTO XML parsing and layout extraction.
 
         Args:
             archive_path: Path to local .tar.bz2 archive. If None, looks for previously downloaded archive.
-            extract_xml: Whether to also parse/load full ALTO XML for each page (slower, high memory).
+            extract_xml: Whether to also parse/load full ALTO XML for each page.
+            max_workers: Maximum worker processes for XML parsing (default: os.cpu_count()).
+            chunk_size: Batch size of XML documents dispatched to worker pool (default: 64).
 
         Yields:
-            ArchivePageItem with plain text, metadata, and optional ALTO XML.
+            ArchivePageItem with plain text, metadata, and optional ALTO XML/layout data.
         """
         if not archive_path:
             raise ValueError("archive_path must be specified or batch must be downloaded first.")
@@ -206,67 +215,99 @@ class Batch:
         )
 
         pages_dict: Dict[tuple, ArchivePageItem] = {}
+        pending_xml: List[Tuple[tuple, bytes]] = []
 
-        with tarfile.open(path, mode="r:bz2") as tar:
-            for member in tar:
-                if not member.isfile():
-                    continue
+        num_workers = max_workers or os.cpu_count() or 4
+        executor_ctx = (
+            concurrent.futures.ProcessPoolExecutor(max_workers=num_workers)
+            if (extract_xml and num_workers > 1)
+            else nullcontext()
+        )
 
-                m = pattern_reel.search(member.name) or pattern_std.search(member.name)
-                if not m:
-                    continue
+        with executor_ctx as executor:
 
-                lccn = m.group("lccn")
-                reel = m.group("reel") if "reel" in m.groupdict() else None
-                year = m.group("year")
-                month = m.group("month")
-                day = m.group("day")
-                ed_str = m.group("edition")
-                seq_str = m.group("seq")
-                ext = m.group("ext")
-                key = (lccn, year, month, day, int(ed_str), int(seq_str))
+            def flush_pending() -> None:
+                if not pending_xml:
+                    return
+                keys = [k for k, _ in pending_xml]
+                xml_list = [x for _, x in pending_xml]
+                if executor is not None:
+                    step = max(1, len(xml_list) // (num_workers * 2))
+                    results = executor.map(parse_alto_to_layout_dict, xml_list, chunksize=step)
+                else:
+                    results = (parse_alto_to_layout_dict(x) for x in xml_list)
 
-                if key not in pages_dict:
-                    pages_dict[key] = ArchivePageItem(
-                        lccn=lccn,
-                        year=year,
-                        month=month,
-                        day=day,
-                        edition=int(ed_str),
-                        sequence=int(seq_str),
-                        reel_id=reel,
-                    )
+                for k, (layout, full_text) in zip(keys, results):
+                    p = pages_dict.get(k)
+                    if p:
+                        p.layout_data = layout
+                        if not p.text and full_text:
+                            p.text = full_text
+                pending_xml.clear()
 
-                page_item = pages_dict[key]
-                if reel and not page_item.reel_id:
-                    page_item.reel_id = reel
+            with tarfile.open(path, mode="r:bz2") as tar:
+                for member in tar:
+                    if not member.isfile():
+                        continue
 
-                if ext == "txt":
-                    f = tar.extractfile(member)
-                    if f:
-                        page_item.text = f.read().decode("utf-8", errors="replace")
-                elif ext == "xml" and extract_xml:
-                    f = tar.extractfile(member)
-                    if f:
-                        xml_bytes = f.read()
-                        page_item.alto_xml = xml_bytes.decode("utf-8", errors="replace")
-                        try:
-                            from loc_chronicling_america.parsers.alto import parse_alto_xml
-                            doc = parse_alto_xml(xml_bytes)
-                            page_item.layout_data = doc.to_layout_dict()
-                            if not page_item.text:
-                                page_item.text = doc.extract_full_text()
-                        except Exception:
-                            pass
+                    m = pattern_reel.search(member.name) or pattern_std.search(member.name)
+                    if not m:
+                        continue
 
-                # If both or txt is loaded, yield and clear to save memory
-                if page_item.text is not None and (not extract_xml or page_item.alto_xml is not None):
-                    yield page_item
-                    del pages_dict[key]
+                    lccn = m.group("lccn")
+                    reel = m.group("reel") if "reel" in m.groupdict() else None
+                    year = m.group("year")
+                    month = m.group("month")
+                    day = m.group("day")
+                    ed_str = m.group("edition")
+                    seq_str = m.group("seq")
+                    ext = m.group("ext")
+                    key = (lccn, year, month, day, int(ed_str), int(seq_str))
 
-        # Flush any remaining
-        for item in pages_dict.values():
-            yield item
+                    if key not in pages_dict:
+                        pages_dict[key] = ArchivePageItem(
+                            lccn=lccn,
+                            year=year,
+                            month=month,
+                            day=day,
+                            edition=int(ed_str),
+                            sequence=int(seq_str),
+                            reel_id=reel,
+                        )
+
+                    page_item = pages_dict[key]
+                    if reel and not page_item.reel_id:
+                        page_item.reel_id = reel
+
+                    if ext == "txt":
+                        f = tar.extractfile(member)
+                        if f:
+                            page_item.text = f.read().decode("utf-8", errors="replace")
+                    elif ext == "xml" and extract_xml:
+                        f = tar.extractfile(member)
+                        if f:
+                            xml_bytes = f.read()
+                            page_item.alto_xml = xml_bytes.decode("utf-8", errors="replace")
+                            pending_xml.append((key, xml_bytes))
+                            if len(pending_xml) >= chunk_size:
+                                flush_pending()
+                                ready_keys = [
+                                    k for k, p in pages_dict.items()
+                                    if p.text is not None and p.layout_data is not None
+                                ]
+                                for k in ready_keys:
+                                    yield pages_dict.pop(k)
+
+                    if not extract_xml and page_item.text is not None:
+                        yield pages_dict.pop(key)
+
+            # Flush any remaining XML batch
+            flush_pending()
+
+            # Flush all remaining items
+            for item in list(pages_dict.values()):
+                yield item
+            pages_dict.clear()
 
     def __repr__(self) -> str:
         return f"<Batch name='{self.name}'>"

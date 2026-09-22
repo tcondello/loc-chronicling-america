@@ -21,9 +21,15 @@ if env_file.exists():
             os.environ.setdefault(k.strip(), v.strip())
 
 
+HIGH_VALUE_36H_STATES = [
+    "AK", "NE", "IL", "CA", "NY", "PA", "TX", "OH", "FL", "WA", "CO", "MO", "NC", "MA", "VA", "MN", "GA", "MI"
+]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run multi-state Chronicling America streaming export pipeline")
     parser.add_argument("--states", nargs="+", default=["NE", "NJ", "NY", "PA", "CA"], help="States to process (default: NE NJ NY PA CA)")
+    parser.add_argument("--high-value-36h", action="store_true", help="Process prioritized high-value states totaling ~36 hours (AK, NE, IL, CA, NY, PA, TX, OH, FL, WA, CO, MO, NC, MA, VA, MN, GA, MI)")
     parser.add_argument("--all-states", action="store_true", help="Process ALL states in the catalog")
     parser.add_argument("--limit-per-state", type=int, default=None, help="Max batches per state (default: all pending)")
     parser.add_argument("--purge-local-after-upload", action="store_true", help="Delete local Parquet files after uploading to Hugging Face to conserve disk")
@@ -52,7 +58,9 @@ def main():
         print(f"✓ Initialized catalog with {b_count:,} batches and {t_count:,} titles.", flush=True)
 
     # Determine target states
-    if args.all_states or (len(args.states) == 1 and args.states[0].upper() == "ALL"):
+    if args.high_value_36h:
+        target_states = HIGH_VALUE_36H_STATES
+    elif args.all_states or (len(args.states) == 1 and args.states[0].upper() == "ALL"):
         with pipeline.db._get_connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT DISTINCT state FROM batches WHERE state IS NOT NULL ORDER BY state")

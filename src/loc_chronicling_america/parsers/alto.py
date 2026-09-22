@@ -275,3 +275,13 @@ def parse_alto_xml(xml_content: str | bytes) -> AltoDocument:
                 doc.blocks.append(block)
 
     return doc
+
+
+def parse_alto_to_layout_dict(xml_bytes: bytes) -> tuple[Optional[dict], Optional[str]]:
+    """Parse ALTO XML bytes directly to layout dictionary and full text in a worker process."""
+    try:
+        doc = parse_alto_xml(xml_bytes)
+        return doc.to_layout_dict(), doc.extract_full_text()
+    except Exception:
+        return None, None
+

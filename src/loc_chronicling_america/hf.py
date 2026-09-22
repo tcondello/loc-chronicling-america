@@ -292,6 +292,24 @@ class HuggingFaceDatasetManager:
     def __init__(self, repo_id: str, token: Optional[str] = None):
         self.repo_id = repo_id
         self.token = token or os.environ.get("HF_TOKEN")
+        self._fs = None
+
+    @property
+    def fs(self):
+        """Lazy-loaded HfFileSystem instance."""
+        if self._fs is None:
+            from huggingface_hub import HfFileSystem
+            self._fs = HfFileSystem(token=self.token)
+        return self._fs
+
+    def file_exists(self, path_in_repo: str) -> bool:
+        """Check if a file exists in the Hugging Face repository."""
+        full_path = f"datasets/{self.repo_id}/{path_in_repo.lstrip('/')}"
+        try:
+            return bool(self.fs.exists(full_path))
+        except Exception:
+            return False
+
 
     def ensure_repo_exists(self, private: bool = False) -> None:
         """Create the Hugging Face dataset repository if it does not already exist."""

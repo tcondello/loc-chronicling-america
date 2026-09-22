@@ -70,3 +70,16 @@ def test_alto_layout_dict(alto_xml: str):
     assert "THE MONITOR" in layout["blocks"][0]["text"]
     assert len(layout["blocks"][0]["box"]) == 4
 
+
+def test_parse_alto_to_layout_dict(alto_xml: str):
+    from loc_chronicling_america.parsers.alto import parse_alto_to_layout_dict
+
+    layout, full_text = parse_alto_to_layout_dict(alto_xml.encode("utf-8"))
+    assert layout is not None
+    assert full_text is not None
+    assert "THE MONITOR" in full_text
+    assert layout["words"] == ["THE", "MONITOR", "OMAHA,", "NEBRASKA"]
+    assert layout["page_width"] == 15000
+    assert layout["page_height"] == 20000
+
+

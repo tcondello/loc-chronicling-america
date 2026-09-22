@@ -221,6 +221,43 @@ class BatchPipeline:
         self._title_cache[lccn] = fallback
         return fallback
 
+    def is_batch_already_uploaded(self, batch_info: BatchInfo, batch_obj: Batch) -> bool:
+        """Check if a batch's parquet files are already present in Hugging Face."""
+        if not self.hf_manager:
+            return False
+
+        try:
+            issues = batch_obj.get_issue_refs()
+            if not issues:
+                return False
+
+            # Check up to 3 sample issues (start, middle, end) to verify batch presence
+            sample_indices = [0]
+            if len(issues) > 1:
+                sample_indices.append(len(issues) // 2)
+            if len(issues) > 2:
+                sample_indices.append(len(issues) - 1)
+
+            for idx in sample_indices:
+                issue = issues[idx]
+                title = self._get_title_info(issue.lccn, batch_awardee=batch_info.awardee)
+                clean_name = clean_newspaper_title(title.name)
+                newspaper_slug = clean_slug(clean_name)
+                state_slug = clean_slug(title.state or batch_info.awardee or "unknown")
+
+                parts = issue.issue_date.split("-")
+                if len(parts) != 3 or not parts[0].isdigit() or not parts[1].isdigit() or not parts[2].isdigit():
+                    return False
+                y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+                rel_path = f"newspapers/{state_slug}/{newspaper_slug}/{y:04d}/{state_slug}_{newspaper_slug}_{y:04d}_{m:02d}_{d:02d}.parquet"
+
+                if not self.hf_manager.file_exists(rel_path):
+                    return False
+
+            return True
+        except Exception:
+            return False
+
     def process_batch(
         self,
         batch_info: BatchInfo,
@@ -228,21 +265,28 @@ class BatchPipeline:
     ) -> Tuple[int, List[str]]:
         """Process a single batch through the streaming pipeline.
 
-        1. Marks batch as processing in SQLite.
-        2. Downloads the .tar.bz2 bulk archive to scratch space.
-        3. Iterates through all ocr.txt members.
-        4. Writes pages to state/newspaper/issue .parquet files.
-        5. Deletes the .tar.bz2 to reclaim disk space.
-        6. Uploads to Hugging Face if configured.
-        7. Marks batch as completed in SQLite.
+        1. Checks if batch is already uploaded to Hugging Face (skips if present).
+        2. Marks batch as processing in SQLite.
+        3. Downloads the .tar.bz2 bulk archive to scratch space.
+        4. Iterates through all ocr.txt and ALTO XML members with multi-core parsing.
+        5. Writes pages to state/newspaper/issue .parquet files.
+        6. Deletes the .tar.bz2 to reclaim disk space.
+        7. Uploads to Hugging Face if configured.
+        8. Marks batch as completed in SQLite.
 
         Returns:
             Tuple of (pages_extracted_count, list_of_relative_output_files).
         """
         batch_name = batch_info.name
-        self.db.mark_pipeline_batch_processing(batch_name)
-
         batch_obj = Batch(name=batch_name, info=batch_info, downloader=self.downloader)
+
+        # Step 0: Remote HF pre-check to prevent duplicate downloads and processing
+        if self.is_batch_already_uploaded(batch_info, batch_obj):
+            print(f"  ⚡ Batch '{batch_name}' already exists on Hugging Face ({self.hf_manager.repo_id}). Skipping.", flush=True)
+            self.db.mark_pipeline_batch_completed(batch_name, pages_extracted=batch_info.page_count or 0, output_files=[])
+            return (batch_info.page_count or 0, [])
+
+        self.db.mark_pipeline_batch_processing(batch_name)
         tar_path = self.scratch_dir / f"{batch_name}.tar.bz2"
 
         try:

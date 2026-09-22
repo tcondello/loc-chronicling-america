@@ -206,3 +206,50 @@ def test_hf_dataset_card_generation(tmp_path):
     assert "config_name: california" in content
     assert "config_name: nebraska" in content
     assert "newspapers/california/**/*.parquet" in content
+
+
+def test_is_batch_already_uploaded_skip(tmp_path, monkeypatch):
+    out_dir = tmp_path / "export_output"
+    monkeypatch.setattr(HuggingFaceDatasetManager, "ensure_repo_exists", lambda self, **kwargs: None)
+    pipeline = BatchPipeline(output_dir=out_dir, hf_repo="tcondello/test-dataset")
+
+    pipeline.db.upsert_title(
+        TitleInfo(
+            lccn="sn85026945",
+            name="The Evening Herald",
+            state="Nebraska",
+            city="Omaha",
+        )
+    )
+
+    batch_info = BatchInfo(
+        name="test_batch_02",
+        awardee="nbu",
+        state="NE",
+        archive_url="https://example.com/test_batch_02.tar.bz2",
+        raw_batch_url="https://example.com/test_batch_02/",
+    )
+
+    from loc_chronicling_america.batch import Batch
+    from loc_chronicling_america.parsers.mets import BatchIssueRef
+
+    # Mock get_issue_refs on Batch class
+    monkeypatch.setattr(Batch, "get_issue_refs", lambda self: [
+        BatchIssueRef(lccn="sn85026945", issue_date="1915-07-03", edition_order=1, issue_xml_path="path/1.xml")
+    ])
+
+    b = Batch(name="test_batch_02", info=batch_info)
+
+    # When file does not exist on HF
+    monkeypatch.setattr(pipeline.hf_manager, "file_exists", lambda p: False)
+    assert not pipeline.is_batch_already_uploaded(batch_info, b)
+
+    # When file exists on HF
+    monkeypatch.setattr(pipeline.hf_manager, "file_exists", lambda p: True)
+    assert pipeline.is_batch_already_uploaded(batch_info, b)
+
+    # Verify process_batch skips downloading when already uploaded
+    pages, files = pipeline.process_batch(batch_info)
+    assert pages == 0
+    assert files == []
+
