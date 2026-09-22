@@ -179,7 +179,7 @@ class ChronAmPipelineStack(Stack):
         # 7. EC2 Worker Instance (High Network Throughput & NVMe/GP3 SSD)
         instance = ec2.Instance(
             self,
-            "ChronAmWorker",
+            "ChronAmWorkerV2",
             instance_type=ec2.InstanceType(instance_type),
             machine_image=ubuntu_ami,
             vpc=vpc,
