@@ -292,7 +292,7 @@ class ChroniclingAmerica:
         AWARDEE_TO_STATE = {
             "ak": "AK", "arhi": "AR", "au": "AL", "az": "AZ", "cohi": "CO", "ct": "CT",
             "curiv": "CA", "deu": "DE", "dlc": "DC", "fu": "FL", "gu": "GA", "hihouml": "HI",
-            "iahi": "IA", "idhi": "ID", "in": "IN", "iune": "NE", "khi": "KS", "kyu": "KY",
+            "iahi": "IA", "idhi": "ID", "in": "IN", "iune": "IL", "khi": "KS", "kyu": "KY",
             "lu": "LA", "mb": "MA", "mdu": "MD", "me": "ME", "mimtptc": "MI", "mnhi": "MN",
             "mohi": "MO", "msar": "MS", "mthi": "MT", "nbu": "NE", "ncu": "NC", "ndhi": "ND",
             "nhd": "NH", "njr": "NJ", "nmu": "NM", "nn": "NY", "nvln": "NV", "ohi": "OH",
