@@ -11,6 +11,8 @@ from pathlib import Path
 from huggingface_hub import CommitOperationDelete, HfApi
 from loc_chronicling_america.db import CatalogDB
 
+import argparse
+
 # Load .env if present
 env_file = Path(".env")
 if env_file.exists():
@@ -19,25 +21,31 @@ if env_file.exists():
             k, v = line.strip().split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
 
-HF_REPO = "Tim-Pinecone/LOC-Chronicling-America"
-HF_TOKEN = os.environ.get("HF_TOKEN")
-OUTPUT_DIR = Path("./export_data")
-
 
 def main():
+    parser = argparse.ArgumentParser(description="Clean up legacy files from Hugging Face dataset repo and reset SQLite queue")
+    parser.add_argument("--repo", default=os.environ.get("HF_REPO", "Tim-Pinecone/LOC-Chronicling-America"), help="Hugging Face repo ID")
+    parser.add_argument("--token", default=os.environ.get("HF_TOKEN"), help="Hugging Face write token")
+    parser.add_argument("--output-dir", default="./export_data", help="Local export directory")
+    args = parser.parse_args()
+
+    hf_repo = args.repo
+    hf_token = args.token
+    output_dir = Path(args.output_dir)
+
     print("=" * 80)
     print("Chronicling America Dataset & Local Storage Cleanup")
-    print(f"Target Repo: https://huggingface.co/datasets/{HF_REPO}")
+    print(f"Target Repo: https://huggingface.co/datasets/{hf_repo}")
     print("=" * 80)
 
-    if not HF_TOKEN:
-        raise ValueError("HF_TOKEN environment variable not found in environment or .env file!")
+    if not hf_token:
+        raise ValueError("HF_TOKEN must be specified via --token or HF_TOKEN environment variable.")
 
-    api = HfApi(token=HF_TOKEN)
+    api = HfApi(token=hf_token)
 
     # Step 1: Clean Hugging Face Repo
     print("\n1. Inspecting remote repository on Hugging Face...")
-    remote_files = api.list_repo_files(repo_id=HF_REPO, repo_type="dataset")
+    remote_files = api.list_repo_files(repo_id=hf_repo, repo_type="dataset")
     print(f"   Found {len(remote_files)} files in repository.")
 
     # We want to delete all files in data/ and legacy catalog files
@@ -55,7 +63,7 @@ def main():
             chunk = files_to_delete[i:i + chunk_size]
             operations = [CommitOperationDelete(path_in_repo=f) for f in chunk]
             api.create_commit(
-                repo_id=HF_REPO,
+                repo_id=hf_repo,
                 repo_type="dataset",
                 operations=operations,
                 commit_message=f"Clean up legacy dataset files ({i + 1} to {min(i + len(chunk), len(files_to_delete))})",
@@ -67,16 +75,16 @@ def main():
 
     # Step 2: Clean Local Export Directory
     print("\n2. Cleaning local export directory...")
-    if OUTPUT_DIR.exists():
-        legacy_data = OUTPUT_DIR / "data"
+    if output_dir.exists():
+        legacy_data = output_dir / "data"
         if legacy_data.exists():
             shutil.rmtree(legacy_data)
             print(f"   ✓ Deleted local {legacy_data}")
-        scratch_dir = OUTPUT_DIR / "scratch"
+        scratch_dir = output_dir / "scratch"
         if scratch_dir.exists():
             shutil.rmtree(scratch_dir)
             print(f"   ✓ Deleted local {scratch_dir}")
-        for f in (OUTPUT_DIR / "catalog.parquet", OUTPUT_DIR / "catalog.jsonl"):
+        for f in (output_dir / "catalog.parquet", output_dir / "catalog.jsonl"):
             if f.exists():
                 f.unlink(missing_ok=True)
                 print(f"   ✓ Deleted local {f.name}")

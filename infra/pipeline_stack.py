@@ -155,7 +155,7 @@ class ChronAmPipelineStack(Stack):
             "User=ubuntu",
             "WorkingDirectory=/home/ubuntu/loc-chronicling-america",
             "EnvironmentFile=/home/ubuntu/loc-chronicling-america/.env",
-            "ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u run_multi_state_pipeline.py --all-states --purge-local-after-upload",
+            "ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u scripts/run_multi_state_pipeline.py --all-states --purge-local-after-upload",
             "Restart=always",
             "RestartSec=15",
             "StandardOutput=append:/var/log/chronam-pipeline.log",

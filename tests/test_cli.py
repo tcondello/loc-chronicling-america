@@ -41,3 +41,19 @@ def test_cli_parser_search():
     assert args.search_command == "titles"
     assert args.query == "Monitor"
     assert args.state == "Nebraska"
+
+
+def test_cli_parser_export_pipeline():
+    parser = build_parser()
+    args = parser.parse_args([
+        "export-pipeline",
+        "--state", "NE",
+        "--output-dir", "/tmp/export",
+        "--purge-after-upload",
+        "--hf-repo", "my-org/my-dataset",
+    ])
+    assert args.command == "export-pipeline"
+    assert args.state == "NE"
+    assert args.output_dir == "/tmp/export"
+    assert args.purge_after_upload is True
+    assert args.hf_repo == "my-org/my-dataset"

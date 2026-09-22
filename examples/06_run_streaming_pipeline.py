@@ -2,8 +2,8 @@
 """Example 6: Run the streaming batch transmutation pipeline.
 
 Demonstrates streaming Chronicling America bulk .tar.bz2 batches directly into
-a state/newspaper/year hierarchy of compressed Pinecone JSONL (.jsonl.gz) files,
-with zero local disk bloat and automatic recovery via the embedded SQLite queue.
+a state/newspaper/issue hierarchy of compressed Apache Parquet (.parquet) files
+with normalized OCR bounding boxes, zero local disk bloat, and automatic recovery.
 """
 
 import argparse
@@ -33,7 +33,7 @@ def main():
         return
 
     print("=" * 70)
-    print("Chronicling America -> Hugging Face / Pinecone Streaming Pipeline")
+    print("Chronicling America -> Apache Parquet Streaming Pipeline")
     print(f"Target Batch: {args.batch}")
     print(f"Output Path : {out_dir.resolve()}")
     print("=" * 70)
@@ -47,8 +47,8 @@ def main():
 
     print(f"\nProcessing batch '{args.batch}'...")
     print("1. Downloading archive to scratch space...")
-    print("2. Streaming OCR text and routing to state/newspaper/year...")
-    print("3. Compressing on-the-fly to .jsonl.gz...")
+    print("2. Parsing METS issue structure and ALTO OCR bounding boxes...")
+    print("3. Writing issue-level Parquet files (state/newspaper/issue)...")
     print("4. Purging raw .tar.bz2 to preserve local disk...")
 
     res = pipeline.run(batch_name=args.batch)
@@ -61,12 +61,12 @@ def main():
     print("=" * 70)
 
     # Show generated files
-    data_dir = out_dir / "data"
-    if data_dir.exists():
-        print("\nGenerated State & Newspaper Hierarchy:")
-        for gz_file in sorted(data_dir.glob("*/*/*.jsonl.gz"))[:10]:
-            size_kb = gz_file.stat().st_size / 1024
-            print(f"  ✓ {gz_file.relative_to(out_dir)} ({size_kb:.1f} KB)")
+    news_dir = out_dir / "newspapers"
+    if news_dir.exists():
+        print("\nGenerated State & Newspaper Issue Parquet Hierarchy:")
+        for p_file in sorted(news_dir.glob("*/*/*.parquet"))[:10]:
+            size_kb = p_file.stat().st_size / 1024
+            print(f"  ✓ {p_file.relative_to(out_dir)} ({size_kb:.1f} KB)")
 
     cat_parquet = out_dir / "catalog.parquet"
     if cat_parquet.exists():

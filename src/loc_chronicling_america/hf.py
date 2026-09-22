@@ -45,7 +45,7 @@ The dataset is partitioned by media type, state, and publication:
 newspapers/
 └── {state}/
     └── {newspaper_slug}/
-        └── {state}_{newspaper_slug}_{city_slug}_{year}.parquet
+        └── {state}_{newspaper_slug}_{year}_{month}_{day}.parquet
 ```
 
 * **`catalog.parquet`**: A lightweight master table (~5 MB) indexing every newspaper title, city, state, publication years, page counts, and demographics for instant discovery.
@@ -137,10 +137,10 @@ print(df)
 
 ## Importing into Pinecone
 
-To import into Pinecone, use the included conversion utility `examples/parquet_to_pinecone.py` to produce standard Pinecone Document Schema JSONL files:
+To import into Pinecone, use the included conversion utility `examples/07_convert_parquet_to_pinecone.py` to produce standard Pinecone Document Schema JSONL files:
 
 ```bash
-python examples/parquet_to_pinecone.py --input newspapers/nebraska/ --output pinecone_import/
+python examples/07_convert_parquet_to_pinecone.py --input newspapers/nebraska/ --output pinecone_import/
 ```
 
 Sync `pinecone_import/` to cloud storage (S3/GCS/Azure), then run Pinecone Bulk Import:

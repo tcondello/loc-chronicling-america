@@ -56,6 +56,12 @@ dev = [
     "huggingface_hub>=0.20.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/tcondello/loc-chronicling-america"
+Documentation = "https://github.com/tcondello/loc-chronicling-america#readme"
+Repository = "https://github.com/tcondello/loc-chronicling-america"
+"Hugging Face Dataset" = "https://huggingface.co/datasets/Tim-Pinecone/LOC-Chronicling-America"
+
 
 [project.scripts]
 loc-chronam = "loc_chronicling_america.cli:main"

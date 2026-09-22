@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cat.add_argument("--sync", action="store_true", help="Synchronize batches and titles into SQLite")
 
     # Pipeline Command
-    p_pipe = subparsers.add_parser("export-pipeline", help="Run streaming batch export pipeline to Hugging Face / Pinecone JSONL")
+    p_pipe = subparsers.add_parser("export-pipeline", help="Run streaming batch export pipeline to Apache Parquet and Hugging Face")
     p_pipe.add_argument("--state", help="Filter batches by state code (e.g. NE, OH, CA)")
     p_pipe.add_argument("--batch", help="Process a specific batch identifier (e.g. nbu_indescribablebeast_ver01)")
     p_pipe.add_argument("--limit-batches", type=int, help="Maximum number of batches to process in this run")
@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pipe.add_argument("--hf-repo", help="Optional Hugging Face dataset repository (e.g. username/dataset-name)")
     p_pipe.add_argument("--hf-token", help="Optional Hugging Face write token")
     p_pipe.add_argument("--keep-tar", action="store_true", help="Keep .tar.bz2 archives after processing (default: False)")
-    p_pipe.add_argument("--purge-after-upload", action="store_true", help="Delete local .jsonl.gz shards after successful HF upload")
+    p_pipe.add_argument("--purge-after-upload", action="store_true", help="Delete local Parquet files after successful HF upload")
     p_pipe.add_argument("--status", action="store_true", help="Display pipeline queue status and exit")
 
     return parser

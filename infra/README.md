@@ -6,7 +6,7 @@ This directory contains the production AWS CDK infrastructure stack (`ChronAmPip
 
 ## Architecture Overview
 
-```
+```text
 AWS Cloud (Single-AZ VPC - $0 NAT Gateway)
 ├── EC2 Instance (c6i.xlarge, Ubuntu 24.04 LTS, 100 GB GP3 EBS)
 │   ├── UserData: Auto-bootstrap repo, venv, and dependencies
@@ -27,17 +27,39 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure AWS Credentials
-Ensure your AWS CLI credentials are set:
+Ensure your AWS CLI session is active:
 ```bash
-export AWS_REGION=us-east-1
-# Or run: aws configure
+# Standard access keys:
+aws configure
+
+# Or AWS IAM Identity Center (SSO):
+aws sso login
 ```
 
-### 3. Deploy Stack
+Verify your credentials:
 ```bash
-# Pass token via environment variable or context parameter
-export HF_TOKEN="<YOUR_HF_TOKEN>"
-cdk deploy -c hf_token=$HF_TOKEN
+aws sts get-caller-identity
+```
+
+### 3. Bootstrap CDK (First time in account/region)
+```bash
+cdk bootstrap
+```
+
+### 4. Deploy Stack
+Deploy with your Hugging Face write token:
+
+```bash
+cdk deploy -c hf_token=<YOUR_HF_TOKEN>
+```
+
+#### Optional Context Overrides:
+```bash
+cdk deploy \
+  -c hf_token=<YOUR_HF_TOKEN> \
+  -c region=us-east-1 \
+  -c instance_type=c6i.xlarge \
+  -c volume_size_gb=100
 ```
 
 ---
@@ -46,12 +68,14 @@ cdk deploy -c hf_token=$HF_TOKEN
 
 Once deployed, the stack automatically starts running the nationwide pipeline via `systemd`.
 
-### Stream Live CloudWatch Logs:
+### Stream Live CloudWatch Logs
 ```bash
 aws logs tail /aws/ec2/loc-chronicling-america --follow
 ```
 
-### Connect to the Worker Terminal (Keyless via SSM):
+### Connect to the Worker Terminal (Keyless via SSM)
+No SSH keys or open inbound ports are needed. Use AWS Systems Manager:
+
 ```bash
 aws ssm start-session --target <InstanceId-from-CDK-Output>
 ```
@@ -64,7 +88,7 @@ systemctl status loc-pipeline.service
 # Live tail local log file
 tail -f /var/log/chronam-pipeline.log
 
-# System resource utilization
+# Inspect system resource utilization
 htop
 df -h
 ```
@@ -72,7 +96,7 @@ df -h
 ---
 
 ## Teardown / Cleanup
-Once all 50 states are completed, destroy the AWS resources:
+Once ingestion is completed, destroy the AWS resources:
 ```bash
 cdk destroy
 ```
