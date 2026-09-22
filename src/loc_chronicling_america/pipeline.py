@@ -1,12 +1,11 @@
 """Streaming batch transmutation pipeline for Chronicling America.
 
 Converts NDNP bulk .tar.bz2 archives into a researcher-friendly State/Newspaper/Year
-hierarchy of compressed Pinecone-compatible JSONL (.jsonl.gz) files without local disk bloat.
+hierarchy of compressed Apache Parquet files without local disk bloat.
 """
 
 from __future__ import annotations
 
-import gzip
 import json
 import os
 import re
@@ -15,6 +14,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from .batch import Batch
 from .db import CatalogDB
@@ -29,8 +31,31 @@ def slugify(text: str) -> str:
     return re.sub(r"[-\s]+", "-", clean)
 
 
+PARQUET_PAGE_SCHEMA = pa.schema([
+    ("_id", pa.string()),
+    ("text", pa.string()),
+    ("title", pa.string()),
+    ("newspaper_title", pa.string()),
+    ("newspaper_slug", pa.string()),
+    ("lccn", pa.string()),
+    ("date", pa.string()),
+    ("year", pa.int32()),
+    ("month", pa.int32()),
+    ("day", pa.int32()),
+    ("edition", pa.string()),
+    ("sequence", pa.int32()),
+    ("city", pa.string()),
+    ("state", pa.string()),
+    ("ethnicity", pa.string()),
+    ("char_count", pa.int32()),
+    ("word_count", pa.int32()),
+    ("loc_item_url", pa.string()),
+    ("source_batch", pa.string()),
+])
+
+
 class BatchPipeline:
-    """Orchestrates streaming download, parsing, and JSONL export across batches."""
+    """Orchestrates streaming download, parsing, and Parquet export across batches."""
 
     def __init__(
         self,
@@ -108,18 +133,14 @@ class BatchPipeline:
 
         # Fallback based on awardee/LCCN
         clean_name = f"Newspaper {lccn}"
-        state_code = batch_awardee.upper() if batch_awardee and len(batch_awardee) == 2 else None
-        state_name = state_code or "Unknown"
-
         fallback = TitleInfo(
             lccn=lccn,
             name=clean_name,
-            state=state_name,
+            state=batch_awardee.upper() if batch_awardee and len(batch_awardee) == 2 else "Unknown",
             city="Unknown",
         )
         self._title_cache[lccn] = fallback
         return fallback
-
 
     def process_batch(
         self,
@@ -131,7 +152,7 @@ class BatchPipeline:
         1. Marks batch as processing in SQLite.
         2. Downloads the .tar.bz2 bulk archive to scratch space.
         3. Iterates through all ocr.txt members.
-        4. Writes pages to state/newspaper/year .jsonl.gz files.
+        4. Writes pages to state/newspaper/year .parquet files.
         5. Deletes the .tar.bz2 to reclaim disk space.
         6. Uploads to Hugging Face if configured.
         7. Marks batch as completed in SQLite.
@@ -151,7 +172,6 @@ class BatchPipeline:
                 batch_obj.download(dest_dir=self.scratch_dir, show_progress=False)
 
             # Step 2: Buffer pages in memory grouped by target file path
-            # target_rel_path -> list of document dicts
             file_buffers: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
             pages_count = 0
 
@@ -165,14 +185,14 @@ class BatchPipeline:
                 state_slug = slugify(title.state or awardee or "unknown")
                 city_slug = slugify(title.city or "unknown")
                 title_slug = slugify(title.name)
-
-                folder_name = f"{title_slug}_{city_slug}_{item.lccn}"
                 year_str = item.year
-                rel_path = f"data/{state_slug}/{folder_name}/{year_str}.jsonl.gz"
+
+                # Hierarchy: newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{city_slug}_{year}.parquet
+                filename = f"{state_slug}_{title_slug}_{city_slug}_{year_str}.parquet"
+                rel_path = f"newspapers/{state_slug}/{title_slug}/{filename}"
 
                 doc_id = f"{item.lccn}_{item.date}_ed-{item.edition}_seq-{item.sequence}"
 
-                # Pinecone Document Schema format
                 doc = {
                     "_id": doc_id,
                     "text": item.text.strip(),
@@ -184,17 +204,16 @@ class BatchPipeline:
                     "year": int(item.year) if item.year.isdigit() else 0,
                     "month": int(item.month) if item.month.isdigit() else 0,
                     "day": int(item.day) if item.day.isdigit() else 0,
-                    "edition": item.edition,
-                    "sequence": item.sequence,
+                    "edition": str(item.edition),
+                    "sequence": int(item.sequence) if str(item.sequence).isdigit() else 1,
                     "city": title.city or "Unknown",
                     "state": title.state or "Unknown",
+                    "ethnicity": title.ethnicity or None,
                     "char_count": len(item.text),
                     "word_count": len(item.text.split()),
                     "loc_item_url": item.loc_url,
                     "source_batch": batch_name,
                 }
-                if title.ethnicity:
-                    doc["ethnicity"] = title.ethnicity
 
                 file_buffers[rel_path].append(doc)
                 pages_count += 1
@@ -202,16 +221,23 @@ class BatchPipeline:
                 if progress_callback and pages_count % 500 == 0:
                     progress_callback(batch_name, pages_count, 0)
 
-            # Step 3: Write buffered documents to compressed .jsonl.gz files
+            # Step 3: Write buffered documents to compressed Parquet files
             written_files: List[str] = []
             for rel_path, docs in file_buffers.items():
                 dest_file = self.output_dir / rel_path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
 
-                # Append gzip-compressed JSON lines
-                with gzip.open(dest_file, "at", encoding="utf-8") as gz_out:
-                    for d in docs:
-                        gz_out.write(json.dumps(d, ensure_ascii=False) + "\n")
+                new_table = pa.Table.from_pylist(docs, schema=PARQUET_PAGE_SCHEMA)
+
+                if dest_file.exists():
+                    try:
+                        existing_table = pq.read_table(dest_file)
+                        combined_table = pa.concat_tables([existing_table, new_table])
+                        pq.write_table(combined_table, dest_file, compression="snappy")
+                    except Exception:
+                        pq.write_table(new_table, dest_file, compression="snappy")
+                else:
+                    pq.write_table(new_table, dest_file, compression="snappy")
 
                 written_files.append(rel_path)
 
@@ -243,39 +269,61 @@ class BatchPipeline:
 
     def update_catalog_index(self) -> Tuple[Path, Optional[Path]]:
         """Scan generated output files to construct a master catalog.parquet and catalog.jsonl."""
-        data_dir = self.output_dir / "data"
-        if not data_dir.exists():
+        newspapers_dir = self.output_dir / "newspapers"
+        if not newspapers_dir.exists():
             return self.output_dir / "catalog.jsonl", None
 
         # Gather metadata on all generated newspaper titles
         titles_summary: Dict[str, Dict[str, Any]] = {}
 
-        for gz_file in data_dir.glob("*/*/*.jsonl.gz"):
-            # Path: data/{state}/{folder}/{year}.jsonl.gz
-            state_slug = gz_file.parent.parent.name
-            folder_name = gz_file.parent.name
-            parts = folder_name.split("_")
-            lccn = parts[-1] if len(parts) >= 2 else folder_name
+        for pq_file in sorted(newspapers_dir.glob("*/*/*.parquet")):
+            state_slug = pq_file.parent.parent.name
+            title_slug = pq_file.parent.name
 
-            title_info = self._get_title_info(lccn)
+            # Read first row to extract canonical metadata
+            lccn = None
+            title_name = None
+            city = None
+            state = None
+            ethnicity = None
+            num_rows = 0
+
+            try:
+                table = pq.read_table(pq_file, columns=["lccn", "newspaper_title", "city", "state", "ethnicity", "year"])
+                num_rows = table.num_rows
+                if num_rows > 0:
+                    first_row = table.slice(0, 1).to_pylist()[0]
+                    lccn = first_row.get("lccn")
+                    title_name = first_row.get("newspaper_title")
+                    city = first_row.get("city")
+                    state = first_row.get("state")
+                    ethnicity = first_row.get("ethnicity")
+            except Exception:
+                continue
+
+            if not lccn:
+                lccn = title_slug
 
             if lccn not in titles_summary:
                 titles_summary[lccn] = {
                     "lccn": lccn,
-                    "newspaper_title": title_info.name,
-                    "state": title_info.state,
-                    "city": title_info.city,
-                    "ethnicity": title_info.ethnicity,
-                    "relative_path": f"data/{state_slug}/{folder_name}/",
+                    "newspaper_title": title_name or title_slug,
+                    "newspaper_slug": title_slug,
+                    "state": state or state_slug,
+                    "city": city or "Unknown",
+                    "ethnicity": ethnicity,
+                    "relative_path": f"newspapers/{state_slug}/{title_slug}/",
                     "file_count": 0,
+                    "total_pages": 0,
                     "total_size_bytes": 0,
                     "years": set(),
                 }
 
             summary = titles_summary[lccn]
             summary["file_count"] += 1
-            summary["total_size_bytes"] += gz_file.stat().st_size
-            year_match = re.match(r"^(\d{4})\.jsonl\.gz$", gz_file.name)
+            summary["total_pages"] += num_rows
+            summary["total_size_bytes"] += pq_file.stat().st_size
+            year_match = re.search(r"_(\d{4})\.parquet$", pq_file.name)
             if year_match:
                 summary["years"].add(int(year_match.group(1)))
 
@@ -288,11 +336,13 @@ class BatchPipeline:
                 {
                     "lccn": s["lccn"],
                     "newspaper_title": s["newspaper_title"],
+                    "newspaper_slug": s["newspaper_slug"],
                     "state": s["state"],
                     "city": s["city"],
                     "ethnicity": s["ethnicity"],
                     "relative_path": s["relative_path"],
                     "file_count": s["file_count"],
+                    "total_pages": s["total_pages"],
                     "total_size_mb": round(s["total_size_bytes"] / (1024 * 1024), 2),
                     "start_year": start_yr,
                     "end_year": end_yr,
@@ -307,9 +357,6 @@ class BatchPipeline:
 
         parquet_path = None
         try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-
             table = pa.Table.from_pylist(records)
             parquet_path = self.output_dir / "catalog.parquet"
             pq.write_table(table, parquet_path)
@@ -372,10 +419,15 @@ class BatchPipeline:
         # Update master index
         self.update_catalog_index()
 
-        # Update Hugging Face README if configured
+        # Update Hugging Face README and catalog if configured
         if self.hf_manager:
             readme_path = self.output_dir / "README.md"
-            self.hf_manager.generate_readme(readme_path)
+            states: List[str] = []
+            newspapers_dir = self.output_dir / "newspapers"
+            if newspapers_dir.exists():
+                states = [d.name for d in newspapers_dir.iterdir() if d.is_dir()]
+
+            self.hf_manager.generate_readme(readme_path, states=states)
             self.hf_manager.upload_file(readme_path, "README.md")
             if (self.output_dir / "catalog.parquet").exists():
                 self.hf_manager.upload_file(self.output_dir / "catalog.parquet", "catalog.parquet")

@@ -1,9 +1,12 @@
 """Tests for the streaming batch transmutation pipeline."""
 
-import gzip
+import io
 import json
 import tarfile
 from pathlib import Path
+
+import pyarrow.parquet as pq
+
 from loc_chronicling_america.db import CatalogDB
 from loc_chronicling_america.hf import HuggingFaceDatasetManager
 from loc_chronicling_america.models import BatchInfo, TitleInfo
@@ -56,7 +59,11 @@ def test_pipeline_queue_db(tmp_path):
     assert summary["processing"] == 1
     assert summary["pending"] == 1
 
-    db.mark_pipeline_batch_completed("batch_ne_01", pages_extracted=150, output_files=["data/ne/paper/1915.jsonl.gz"])
+    db.mark_pipeline_batch_completed(
+        "batch_ne_01",
+        pages_extracted=150,
+        output_files=["newspapers/nebraska/the-monitor/nebraska_the-monitor_omaha_1915.parquet"],
+    )
     summary = db.get_pipeline_summary()
     assert summary["completed"] == 1
     assert summary["pages_extracted"] == 150
@@ -66,7 +73,7 @@ def test_pipeline_queue_db(tmp_path):
     assert summary["failed"] == 1
 
 
-def test_pipeline_batch_processing(tmp_path):
+def test_pipeline_parquet_batch_processing(tmp_path):
     db_path = tmp_path / "test_catalog.sqlite"
     out_dir = tmp_path / "export_output"
     scratch_dir = tmp_path / "scratch"
@@ -90,14 +97,11 @@ def test_pipeline_batch_processing(tmp_path):
     scratch_dir.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(tar_path, "w:bz2") as tar:
-        # File 1: page 1
         txt_data1 = b"Front page headline text of the evening herald."
         info1 = tarfile.TarInfo(name="sn85026945/1915/07/03/ed-1/seq-1/ocr.txt")
         info1.size = len(txt_data1)
-        import io
         tar.addfile(info1, io.BytesIO(txt_data1))
 
-        # File 2: page 2
         txt_data2 = b"Second page market reports and sports news."
         info2 = tarfile.TarInfo(name="sn85026945/1915/07/03/ed-1/seq-2/ocr.txt")
         info2.size = len(txt_data2)
@@ -124,34 +128,31 @@ def test_pipeline_batch_processing(tmp_path):
     assert pages_extracted == 2
     assert len(written_files) == 1
 
-    # Verify output hierarchy: data/nebraska/the-evening-herald_omaha_sn85026945/1915.jsonl.gz
+    # Verify output hierarchy: newspapers/nebraska/the-evening-herald/nebraska_the-evening-herald_omaha_1915.parquet
+    expected_rel_path = "newspapers/nebraska/the-evening-herald/nebraska_the-evening-herald_omaha_1915.parquet"
+    assert written_files[0] == expected_rel_path
     expected_file = out_dir / written_files[0]
     assert expected_file.exists()
-    assert "nebraska" in written_files[0]
-    assert "the-evening-herald_omaha_sn85026945" in written_files[0]
-    assert written_files[0].endswith("1915.jsonl.gz")
 
     # Scratch tarball should be purged
     assert not tar_path.exists(), "Temporary .tar.bz2 was not deleted"
 
-    # Verify JSONL lines inside .jsonl.gz
-    with gzip.open(expected_file, "rt", encoding="utf-8") as gz_in:
-        lines = gz_in.readlines()
-        assert len(lines) == 2
-        doc1 = json.loads(lines[0])
-        assert doc1["_id"] == "sn85026945_1915-07-03_ed-1_seq-1"
-        assert doc1["text"] == "Front page headline text of the evening herald."
-        assert doc1["newspaper_title"] == "The Evening Herald"
-        assert doc1["city"] == "Omaha"
-        assert doc1["state"] == "Nebraska"
-        assert doc1["year"] == 1915
-        assert doc1["sequence"] == 1
+    # Verify Parquet table contents
+    table = pq.read_table(expected_file)
+    assert table.num_rows == 2
+    records = table.to_pylist()
+    assert records[0]["_id"] == "sn85026945_1915-07-03_ed-1_seq-1"
+    assert records[0]["text"] == "Front page headline text of the evening herald."
+    assert records[0]["newspaper_title"] == "The Evening Herald"
+    assert records[0]["city"] == "Omaha"
+    assert records[0]["state"] == "Nebraska"
+    assert records[0]["year"] == 1915
+    assert records[0]["sequence"] == 1
 
     # Test master index generation
     jsonl_cat, parquet_cat = pipeline.update_catalog_index()
     assert jsonl_cat.exists()
-    if parquet_cat:
-        assert parquet_cat.exists()
+    assert parquet_cat.exists()
 
     with open(jsonl_cat, "r", encoding="utf-8") as f:
         cat_records = [json.loads(line) for line in f]
@@ -159,14 +160,18 @@ def test_pipeline_batch_processing(tmp_path):
         assert cat_records[0]["lccn"] == "sn85026945"
         assert cat_records[0]["newspaper_title"] == "The Evening Herald"
         assert cat_records[0]["file_count"] == 1
+        assert cat_records[0]["total_pages"] == 2
 
 
 def test_hf_dataset_card_generation(tmp_path):
     mgr = HuggingFaceDatasetManager(repo_id="tcondello/test-dataset")
     readme_path = tmp_path / "README.md"
-    mgr.generate_readme(readme_path)
+    mgr.generate_readme(readme_path, states=["nebraska", "california"])
     assert readme_path.exists()
     content = readme_path.read_text(encoding="utf-8")
     assert "tcondello/test-dataset" in content
-    assert "task_categories:" in content
-    assert "Pinecone Document Schema" in content
+    assert "configs:" in content
+    assert "config_name: default" in content
+    assert "config_name: california" in content
+    assert "config_name: nebraska" in content
+    assert "newspapers/california/*/*.parquet" in content

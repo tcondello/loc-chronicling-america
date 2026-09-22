@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run multi-state streaming pipeline for Chronicling America data.
 
-Streams batches to compressed JSONL and pushes directly to Hugging Face
+Streams batches to compressed Apache Parquet and pushes directly to Hugging Face
 with atomic commits and automatic scratch space purging.
 """
 

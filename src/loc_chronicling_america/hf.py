@@ -1,10 +1,10 @@
-"""Hugging Face Hub dataset helper for Chronicling America Pinecone exports."""
+"""Hugging Face Hub dataset helper for Chronicling America Parquet exports."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 DATASET_CARD_TEMPLATE = """---
@@ -23,29 +23,37 @@ tags:
 - us-history
 size_categories:
 - 10M<n<100M
+configs:
+  - config_name: default
+    data_files: "newspapers/*/*/*.parquet"
+{state_configs}
 ---
 
-# Chronicling America (US Library of Congress) - Pinecone Document Dataset
+# Chronicling America (US Library of Congress) - Parquet Dataset
 
-This dataset contains digitized, OCR-extracted historical American newspapers from the **US Library of Congress Chronicling America / National Digital Newspaper Program (NDNP)**, pre-formatted according to the **Pinecone Document Schema JSONL specification**.
+This dataset contains digitized, OCR-extracted historical American newspapers from the **US Library of Congress Chronicling America / National Digital Newspaper Program (NDNP)**, partitioned into high-performance, columnar **Apache Parquet** files.
+
+## Interactive Dataset Studio / Viewer
+
+This dataset is fully viewable directly within the **Hugging Face Dataset Viewer / Data Studio**. Use the subset dropdown above to filter by state or explore the entire collection.
 
 ## Dataset Structure
 
-The dataset is partitioned hierarchically by **State**, **Newspaper Title**, and **Year**:
+The dataset is partitioned by media type, state, and publication:
 
 ```text
-data/
-├── {state}/
-│   └── {newspaper_slug}_{city_slug}_{lccn}/
-│       ├── {year}.jsonl.gz
+newspapers/
+└── {state}/
+    └── {newspaper_slug}/
+        └── {state}_{newspaper_slug}_{city_slug}_{year}.parquet
 ```
 
 * **`catalog.parquet`**: A lightweight master table (~5 MB) indexing every newspaper title, city, state, publication years, page counts, and demographics for instant discovery.
-* **`data/{state}/.../{year}.jsonl.gz`**: Gzip-compressed JSON Lines files where each line is one newspaper page ready for bulk import into Pinecone or streaming NLP pipelines.
+* **`newspapers/{state}/{newspaper_slug}/{state}_{newspaper_slug}_{city_slug}_{year}.parquet`**: Columnar Snappy-compressed Parquet files where each row is one newspaper page with complete plain text OCR and rich bibliographic metadata.
 
-## Document Schema (Pinecone Import Format)
+## Document Schema
 
-Each JSONL document contains:
+Each Parquet record contains:
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
@@ -56,14 +64,13 @@ Each JSONL document contains:
 | `newspaper_slug` | `string` | URL-safe slug |
 | `lccn` | `string` | Library of Congress Control Number |
 | `date` | `string` | Publication date (`YYYY-MM-DD`) |
-| `year`, `month`, `day` | `int` | Date components for numeric filtering |
+| `year`, `month`, `day` | `int32` | Date components for numeric filtering |
+| `edition` | `string` | Edition identifier |
+| `sequence` | `int32` | Page number within the issue |
 | `city`, `state` | `string` | Geographic origin |
-| `sequence` | `int` | Page number within the issue |
-| `page_count` | `int` | Total pages in the issue |
-| `char_count`, `word_count` | `int` | Text length statistics |
+| `ethnicity` | `string` | Subject ethnicity if recorded (e.g. African American) |
+| `char_count`, `word_count` | `int32` | Text length statistics |
 | `loc_item_url` | `string` | Canonical Library of Congress permalink |
-| `image_url` | `string` | Full master scan IIIF URL |
-| `pdf_url` | `string` | Single-page PDF URL |
 | `source_batch` | `string` | Exact NDNP source batch identifier for provenance |
 
 ## Quickstart: Loading in Python
@@ -74,7 +81,7 @@ from datasets import load_dataset
 # 1. Stream all newspapers from a state (e.g. Nebraska)
 dataset = load_dataset(
     "{repo_id}",
-    data_files="data/nebraska/**/*.jsonl.gz",
+    "nebraska",
     streaming=True
 )
 
@@ -83,9 +90,31 @@ for doc in dataset["train"].take(5):
     print(doc["text"][:150])
 ```
 
+### Direct Parquet Querying with DuckDB
+
+```python
+import duckdb
+
+# Query across all California newspapers without downloading the full dataset
+con = duckdb.connect()
+df = con.execute(\"\"\"
+    SELECT newspaper_title, date, text
+    FROM 'hf://datasets/{repo_id}/newspapers/california/*/*.parquet'
+    WHERE year = 1906 AND text ILIKE '%earthquake%'
+    LIMIT 10
+\"\"\").df()
+print(df)
+```
+
 ## Importing into Pinecone
 
-Sync your desired state or folder to cloud storage (S3/GCS/Azure), then run Pinecone Bulk Import:
+To import into Pinecone, use the included conversion utility `examples/parquet_to_pinecone.py` to produce standard Pinecone Document Schema JSONL files:
+
+```bash
+python examples/parquet_to_pinecone.py --input newspapers/nebraska/ --output pinecone_import/
+```
+
+Sync `pinecone_import/` to cloud storage (S3/GCS/Azure), then run Pinecone Bulk Import:
 
 ```python
 from pinecone import Pinecone, ImportErrorMode
@@ -94,7 +123,7 @@ pc = Pinecone()
 index = pc.Index(host="YOUR_INDEX_HOST")
 
 index.start_import(
-    uri="s3://my-bucket/chronicling-america/data/nebraska",
+    uri="s3://my-bucket/chronicling-america/pinecone_import",
     error_mode=ImportErrorMode.CONTINUE
 )
 ```
@@ -125,14 +154,26 @@ class HuggingFaceDatasetManager:
         except Exception as e:
             raise RuntimeError(f"Failed to create or access Hugging Face repo '{self.repo_id}': {e}") from e
 
-    def generate_readme(self, output_path: Path | str) -> Path:
-        """Generate and save the README.md dataset card."""
+    def generate_readme(
+        self,
+        output_path: Path | str,
+        states: Optional[List[str]] = None,
+    ) -> Path:
+        """Generate and save the README.md dataset card with Data Studio configs."""
+        state_config_lines = []
+        if states:
+            for st in sorted(states):
+                clean_st = st.lower().replace(" ", "-")
+                state_config_lines.append(f"  - config_name: {clean_st}\n    data_files: \"newspapers/{clean_st}/*/*.parquet\"")
+
+        state_configs_str = "\n".join(state_config_lines)
         content = DATASET_CARD_TEMPLATE.replace("{repo_id}", self.repo_id)
+        content = content.replace("{state_configs}", state_configs_str)
+
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return path
-
 
     def upload_file(
         self,
@@ -192,4 +233,3 @@ class HuggingFaceDatasetManager:
             operations=operations,
             commit_message=msg,
         )
-
