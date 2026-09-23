@@ -8,6 +8,7 @@ import os
 import re
 import tarfile
 from contextlib import nullcontext
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -132,11 +133,18 @@ class Batch:
         return manifest
 
     def get_manifest_asset_urls(self) -> Dict[Tuple[str, str, int, int], Dict[str, Any]]:
-        """Fetch and parse manifest-md5.txt to map (lccn, date, edition, seq) to direct JP2 and PDF URLs."""
-        url = f"{self.raw_batch_url}manifest-md5.txt"
-        try:
-            text = self.downloader.fetch_text(url)
-        except Exception:
+        """Fetch and parse manifest file (manifest-md5, sha1, or sha256) to map (lccn, date, edition, seq) to direct JP2 and PDF URLs."""
+        text = None
+        for filename in ("manifest-md5.txt", "manifest-sha1.txt", "manifest-sha256.txt"):
+            try:
+                url = f"{self.raw_batch_url}{filename}"
+                text = self.downloader.fetch_text(url)
+                if text:
+                    break
+            except Exception:
+                continue
+
+        if not text:
             return {}
 
         pattern = re.compile(
