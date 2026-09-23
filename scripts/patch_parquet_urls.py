@@ -23,13 +23,19 @@ import pyarrow.parquet as pq
 from huggingface_hub import CommitOperationAdd, HfApi
 from loc_chronicling_america.batch import Batch
 
-# Load .env if present
-env_file = Path(".env")
-if env_file.exists():
-    for line in env_file.read_text().splitlines():
-        if line.strip() and not line.startswith("#") and "=" in line:
-            k, v = line.strip().split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+# Load .env if present (check cwd, script parent, and standard app dir)
+env_candidates = [
+    Path(".env"),
+    Path(__file__).resolve().parent.parent / ".env",
+    Path("/home/ubuntu/loc-chronicling-america/.env"),
+]
+for env_file in env_candidates:
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            if line.strip() and not line.startswith("#") and "=" in line:
+                k, v = line.strip().split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+        break
 
 
 class ParquetUrlPatcher:
@@ -38,6 +44,8 @@ class ParquetUrlPatcher:
     def __init__(self, repo_id: str = "Tim-Pinecone/LOC-Chronicling-America", token: Optional[str] = None):
         self.repo_id = repo_id
         self.token = token or os.getenv("HF_TOKEN")
+        if not self.token:
+            print("WARNING: HF_TOKEN is not set! Writes and commits to Hugging Face will fail.", flush=True)
         self.api = HfApi(token=self.token)
         self.manifest_cache: Dict[str, Dict[Tuple[str, str, int, int], Dict[str, Any]]] = {}
 
