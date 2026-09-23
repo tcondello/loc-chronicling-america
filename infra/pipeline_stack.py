@@ -24,6 +24,7 @@ class ChronAmPipelineStack(Stack):
         hf_repo: str = "Tim-Pinecone/LOC-Chronicling-America",
         instance_type: str = "c6i.xlarge",
         volume_size_gb: int = 100,
+        states: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -164,7 +165,7 @@ class ChronAmPipelineStack(Stack):
             "User=ubuntu",
             "WorkingDirectory=/home/ubuntu/loc-chronicling-america",
             "EnvironmentFile=/home/ubuntu/loc-chronicling-america/.env",
-            "ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u scripts/run_multi_state_pipeline.py --high-value-36h --purge-local-after-upload",
+            f"ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u scripts/run_multi_state_pipeline.py {f'--states {states}' if states else '--high-value-36h'} --purge-local-after-upload",
             "Restart=always",
             "RestartSec=15",
             "StandardOutput=append:/var/log/chronam-pipeline.log",

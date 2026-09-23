@@ -33,6 +33,8 @@ region = (
 # otherwise pass env=None for an environment-agnostic stack.
 env = cdk.Environment(account=account, region=region) if account else None
 
+states = app.node.try_get_context("states")
+
 ChronAmPipelineStack(
     app,
     "ChronAmPipelineStack",
@@ -40,6 +42,7 @@ ChronAmPipelineStack(
     hf_repo=hf_repo,
     instance_type=instance_type,
     volume_size_gb=volume_size_gb,
+    states=states,
     env=env,
     description="Automated, non-stop Library of Congress Chronicling America streaming ingestion pipeline to Hugging Face",
 )
