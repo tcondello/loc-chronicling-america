@@ -102,6 +102,7 @@ class ChronAmPipelineStack(Stack):
             "curl -fsSL https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb -o /tmp/amazon-cloudwatch-agent.deb",
             "dpkg -i -E /tmp/amazon-cloudwatch-agent.deb",
             "rm -f /tmp/amazon-cloudwatch-agent.deb",
+            "systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service || true",
             "",
             "# 3. Clone Repository into ubuntu user home",
             "USER_HOME=/home/ubuntu",
@@ -163,7 +164,7 @@ class ChronAmPipelineStack(Stack):
             "User=ubuntu",
             "WorkingDirectory=/home/ubuntu/loc-chronicling-america",
             "EnvironmentFile=/home/ubuntu/loc-chronicling-america/.env",
-            "ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u scripts/run_multi_state_pipeline.py --all-states --purge-local-after-upload",
+            "ExecStart=/home/ubuntu/loc-chronicling-america/.venv/bin/python -u scripts/run_multi_state_pipeline.py --high-value-36h --purge-local-after-upload",
             "Restart=always",
             "RestartSec=15",
             "StandardOutput=append:/var/log/chronam-pipeline.log",
@@ -181,7 +182,7 @@ class ChronAmPipelineStack(Stack):
         # 7. EC2 Worker Instance (High Network Throughput & NVMe/GP3 SSD)
         instance = ec2.Instance(
             self,
-            "ChronAmWorkerV3",
+            "ChronAmWorkerV4",
             instance_type=ec2.InstanceType(instance_type),
             machine_image=ubuntu_ami,
             vpc=vpc,
