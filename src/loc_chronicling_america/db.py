@@ -94,12 +94,18 @@ class CatalogDB:
                     output_files TEXT,
                     error_message TEXT,
                     started_at TEXT,
-                    completed_at TEXT
+                    completed_at TEXT,
+                    attempts INTEGER DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_pipeline_status ON pipeline_batches(status);
                 """
             )
+            # Safe schema migration for existing databases
+            try:
+                conn.execute("ALTER TABLE pipeline_batches ADD COLUMN attempts INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
 
 
     # ----------------------------------------------------------------------
@@ -488,21 +494,85 @@ class CatalogDB:
             return [self._row_to_batch(r) for r in rows]
 
     def mark_pipeline_batch_processing(self, batch_name: str) -> None:
-        """Mark a batch as currently processing."""
+        """Mark a batch as currently processing and increment attempt count."""
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO pipeline_batches (batch_name, status, started_at)
-                VALUES (?, 'processing', ?)
+                INSERT INTO pipeline_batches (batch_name, status, started_at, attempts)
+                VALUES (?, 'processing', ?, 1)
                 ON CONFLICT(batch_name) DO UPDATE SET
                     status = 'processing',
                     started_at = ?,
+                    attempts = COALESCE(attempts, 0) + 1,
                     error_message = NULL
                 """,
                 (batch_name, now_iso, now_iso),
             )
             conn.commit()
+
+    def reset_interrupted_batches(self, max_attempts: int = 2) -> Tuple[int, int]:
+        """Cleanly handle batches left in 'processing' state from an unexpected process kill/reboot.
+
+        Batches with attempts >= max_attempts are marked 'failed' to prevent infinite crash loops.
+        Batches with attempts < max_attempts are reset to 'pending' for a clean retry.
+
+        Returns:
+            Tuple of (reset_to_pending_count, marked_failed_count).
+        """
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            # Mark batches exceeding max_attempts as failed
+            cur = conn.execute(
+                """
+                UPDATE pipeline_batches
+                SET status = 'failed',
+                    error_message = 'Abnormally terminated (crashed/killed) - exceeded max attempts',
+                    completed_at = ?
+                WHERE status = 'processing' AND COALESCE(attempts, 0) >= ?
+                """,
+                (now_iso, max_attempts),
+            )
+            failed_count = cur.rowcount
+
+            # Reset remaining interrupted batches to pending
+            cur = conn.execute(
+                """
+                UPDATE pipeline_batches
+                SET status = 'pending',
+                    error_message = NULL
+                WHERE status = 'processing'
+                """
+            )
+            pending_count = cur.rowcount
+            conn.commit()
+            return pending_count, failed_count
+
+    def mark_failed_batches_pending(self, state: Optional[str] = None) -> int:
+        """Reset failed batches back to pending with attempts reset to 0 (for explicit retries)."""
+        with self._get_connection() as conn:
+            if state:
+                cur = conn.execute(
+                    """
+                    UPDATE pipeline_batches
+                    SET status = 'pending', attempts = 0, error_message = NULL
+                    WHERE status = 'failed' AND batch_name IN (
+                        SELECT name FROM batches WHERE UPPER(state) = UPPER(?)
+                    )
+                    """,
+                    (state,),
+                )
+            else:
+                cur = conn.execute(
+                    """
+                    UPDATE pipeline_batches
+                    SET status = 'pending', attempts = 0, error_message = NULL
+                    WHERE status = 'failed'
+                    """
+                )
+            count = cur.rowcount
+            conn.commit()
+            return count
 
     def mark_pipeline_batch_completed(
         self,

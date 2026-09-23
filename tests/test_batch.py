@@ -31,7 +31,7 @@ def test_batch_archive_stream(tmp_path: Path):
         tar.addfile(x_info, io.BytesIO(xml_content))
 
     batch = Batch("test_batch_ver01")
-    items = list(batch.iter_archive(archive_path, extract_xml=True))
+    items = list(batch.iter_archive(archive_path, extract_xml=True, keep_alto_xml=True))
 
     assert len(items) == 1
     item = items[0]

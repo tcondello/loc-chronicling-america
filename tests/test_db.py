@@ -114,3 +114,32 @@ def test_chronicling_america_with_catalog_db(tmp_path: Path):
     client = ChroniclingAmerica(catalog_db=db)
     assert client.catalog is db
 
+
+def test_pipeline_retry_and_recovery(tmp_path: Path):
+    db_file = tmp_path / "test_catalog.sqlite"
+    db = CatalogDB(db_file)
+
+    # Mark batch as processing 1st attempt
+    db.mark_pipeline_batch_processing("test_batch_a")
+    # Mark batch as processing 2nd attempt
+    db.mark_pipeline_batch_processing("test_batch_b")
+    db.mark_pipeline_batch_processing("test_batch_b")
+
+    # Simulate abrupt process kill - reset interrupted batches
+    # batch_a has 1 attempt (< 2) -> should reset to pending
+    # batch_b has 2 attempts (>= 2) -> should be marked failed
+    pending_count, failed_count = db.reset_interrupted_batches(max_attempts=2)
+    assert pending_count == 1
+    assert failed_count == 1
+
+    summary = db.get_pipeline_summary()
+    assert summary["pending"] == 1
+    assert summary["failed"] == 1
+
+    # Test explicit manual retry of failed batches
+    re_count = db.mark_failed_batches_pending()
+    assert re_count == 1
+    summary2 = db.get_pipeline_summary()
+    assert summary2["pending"] == 2
+    assert summary2["failed"] == 0
+

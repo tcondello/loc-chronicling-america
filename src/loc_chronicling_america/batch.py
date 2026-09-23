@@ -182,6 +182,7 @@ class Batch:
         extract_xml: bool = False,
         max_workers: Optional[int] = None,
         chunk_size: int = 64,
+        keep_alto_xml: bool = False,
     ) -> Iterator[ArchivePageItem]:
         """Iterate over all pages directly from a downloaded or streamed .tar.bz2 archive.
 
@@ -193,6 +194,7 @@ class Batch:
             extract_xml: Whether to also parse/load full ALTO XML for each page.
             max_workers: Maximum worker processes for XML parsing (default: os.cpu_count()).
             chunk_size: Batch size of XML documents dispatched to worker pool (default: 64).
+            keep_alto_xml: Whether to retain raw ALTO XML string in memory on ArchivePageItem (default: False to conserve RAM).
 
         Yields:
             ArchivePageItem with plain text, metadata, and optional ALTO XML/layout data.
@@ -216,6 +218,7 @@ class Batch:
 
         pages_dict: Dict[tuple, ArchivePageItem] = {}
         pending_xml: List[Tuple[tuple, bytes]] = []
+        seen_keys: set = set()
 
         num_workers = max_workers or os.cpu_count() or 4
         executor_ctx = (
@@ -264,6 +267,9 @@ class Batch:
                     ext = m.group("ext")
                     key = (lccn, year, month, day, int(ed_str), int(seq_str))
 
+                    if key in seen_keys:
+                        continue
+
                     if key not in pages_dict:
                         pages_dict[key] = ArchivePageItem(
                             lccn=lccn,
@@ -287,7 +293,8 @@ class Batch:
                         f = tar.extractfile(member)
                         if f:
                             xml_bytes = f.read()
-                            page_item.alto_xml = xml_bytes.decode("utf-8", errors="replace")
+                            if keep_alto_xml:
+                                page_item.alto_xml = xml_bytes.decode("utf-8", errors="replace")
                             pending_xml.append((key, xml_bytes))
                             if len(pending_xml) >= chunk_size:
                                 flush_pending()
@@ -296,16 +303,19 @@ class Batch:
                                     if p.text is not None and p.layout_data is not None
                                 ]
                                 for k in ready_keys:
+                                    seen_keys.add(k)
                                     yield pages_dict.pop(k)
 
                     if not extract_xml and page_item.text is not None:
+                        seen_keys.add(key)
                         yield pages_dict.pop(key)
 
             # Flush any remaining XML batch
             flush_pending()
 
             # Flush all remaining items
-            for item in list(pages_dict.values()):
+            for k, item in list(pages_dict.items()):
+                seen_keys.add(k)
                 yield item
             pages_dict.clear()
 

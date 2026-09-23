@@ -33,6 +33,7 @@ def main():
     parser.add_argument("--all-states", action="store_true", help="Process ALL states in the catalog")
     parser.add_argument("--limit-per-state", type=int, default=None, help="Max batches per state (default: all pending)")
     parser.add_argument("--purge-local-after-upload", action="store_true", help="Delete local Parquet files after uploading to Hugging Face to conserve disk")
+    parser.add_argument("--retry-failed", action="store_true", help="Explicitly reset all failed batches back to pending for retry")
     parser.add_argument("--hf-repo", default=os.environ.get("HF_REPO", "Tim-Pinecone/LOC-Chronicling-America"), help="Hugging Face repo id")
     parser.add_argument("--output-dir", default="./export_data", help="Output directory")
     args = parser.parse_args()
@@ -78,10 +79,16 @@ def main():
     print(f"Purge Local Parquet: {'Enabled (--purge-local-after-upload)' if args.purge_local_after_upload else 'Disabled (retaining local copy)'}", flush=True)
     print("=" * 80, flush=True)
 
-    # Ensure any interrupted or failed batches are reset to pending for retry
-    with pipeline.db._get_connection() as conn:
-        conn.execute("UPDATE pipeline_batches SET status = 'pending', error_message = NULL WHERE status IN ('failed', 'processing')")
-        conn.commit()
+    # Handle manual retries if requested
+    if args.retry_failed:
+        re_count = pipeline.db.mark_failed_batches_pending()
+        if re_count > 0:
+            print(f"✓ Reset {re_count} failed batches to pending (--retry-failed).", flush=True)
+
+    # Cleanly recover any interrupted batches without infinite crash loops
+    reset_pending, marked_failed = pipeline.db.reset_interrupted_batches(max_attempts=2)
+    if reset_pending > 0 or marked_failed > 0:
+        print(f"Pipeline recovery: {reset_pending} interrupted batches queued for retry, {marked_failed} exceeding max attempts marked failed.", flush=True)
 
     overall_start = time.time()
     total_successful = 0

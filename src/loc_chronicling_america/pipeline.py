@@ -6,6 +6,7 @@ hierarchy of compressed Apache Parquet files without local disk bloat.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import re
@@ -294,15 +295,45 @@ class BatchPipeline:
             if not tar_path.exists():
                 batch_obj.download(dest_dir=self.scratch_dir, show_progress=False)
 
-            # Step 2: Buffer pages in memory grouped by target file path
+            # Step 2: Stream pages with bounded in-memory buffer and periodic disk flush
             file_buffers: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            written_files: Set[str] = set()
             pages_count = 0
+            buffered_pages = 0
+            FLUSH_PAGE_THRESHOLD = 150
 
             awardee = batch_info.awardee
             awardee_code = awardee or "unknown"
             awardee_full = AWARDEE_NAMES.get(awardee_code.lower(), awardee_code)
 
-            for item in batch_obj.iter_archive(archive_path=tar_path, extract_xml=True):
+            def flush_buffers() -> None:
+                nonlocal buffered_pages
+                if not file_buffers:
+                    return
+                for r_path, docs in file_buffers.items():
+                    if not docs:
+                        continue
+                    dest_file = self.output_dir / r_path
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+
+                    new_table = pa.Table.from_pylist(docs, schema=PARQUET_PAGE_SCHEMA)
+                    if dest_file.exists():
+                        try:
+                            existing_table = pq.read_table(dest_file)
+                            combined_table = pa.concat_tables([existing_table, new_table])
+                            pq.write_table(combined_table, dest_file, compression="snappy")
+                        except Exception:
+                            pq.write_table(new_table, dest_file, compression="snappy")
+                    else:
+                        pq.write_table(new_table, dest_file, compression="snappy")
+
+                    written_files.add(r_path)
+
+                file_buffers.clear()
+                buffered_pages = 0
+                gc.collect()
+
+            for item in batch_obj.iter_archive(archive_path=tar_path, extract_xml=True, keep_alto_xml=False):
                 if not item.text:
                     continue
 
@@ -367,48 +398,36 @@ class BatchPipeline:
 
                 file_buffers[rel_path].append(doc)
                 pages_count += 1
+                buffered_pages += 1
+
+                if buffered_pages >= FLUSH_PAGE_THRESHOLD:
+                    flush_buffers()
 
                 if progress_callback and pages_count % 500 == 0:
                     progress_callback(batch_name, pages_count, 0)
 
-            # Step 3: Write buffered documents to compressed Parquet files
-            written_files: List[str] = []
-            for rel_path, docs in file_buffers.items():
-                dest_file = self.output_dir / rel_path
-                dest_file.parent.mkdir(parents=True, exist_ok=True)
-
-                new_table = pa.Table.from_pylist(docs, schema=PARQUET_PAGE_SCHEMA)
-
-                if dest_file.exists():
-                    try:
-                        existing_table = pq.read_table(dest_file)
-                        combined_table = pa.concat_tables([existing_table, new_table])
-                        pq.write_table(combined_table, dest_file, compression="snappy")
-                    except Exception:
-                        pq.write_table(new_table, dest_file, compression="snappy")
-                else:
-                    pq.write_table(new_table, dest_file, compression="snappy")
-
-                written_files.append(rel_path)
+            # Final flush for any remaining buffered pages
+            flush_buffers()
+            written_files_list = sorted(list(written_files))
 
             # Step 4: Delete raw .tar.bz2 to preserve scratch disk space
             if not self.keep_tar and tar_path.exists():
                 tar_path.unlink(missing_ok=True)
 
             # Step 5: Upload to Hugging Face if configured
-            if self.hf_manager and written_files:
-                batch_uploads = [(self.output_dir / rel_path, rel_path) for rel_path in written_files]
+            if self.hf_manager and written_files_list:
+                batch_uploads = [(self.output_dir / rel_path, rel_path) for rel_path in written_files_list]
                 self.hf_manager.upload_files_atomic(
                     local_files=batch_uploads,
                     commit_message=f"Add {pages_count} pages from batch {batch_name}",
                 )
                 if self.purge_local_after_upload:
-                    for rel_path in written_files:
+                    for rel_path in written_files_list:
                         (self.output_dir / rel_path).unlink(missing_ok=True)
 
             # Step 6: Mark completed in SQLite
-            self.db.mark_pipeline_batch_completed(batch_name, pages_count, written_files)
-            return pages_count, written_files
+            self.db.mark_pipeline_batch_completed(batch_name, pages_count, written_files_list)
+            return pages_count, written_files_list
 
         except Exception as e:
             # Clean up on failure
