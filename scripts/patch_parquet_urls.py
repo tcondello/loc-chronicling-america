@@ -178,6 +178,29 @@ class ParquetUrlPatcher:
         print(f"✓ Patched {patched_count}/{len(files)} files in {elapsed:.2f}s ({elapsed/len(files)*1000:.1f}ms/file)")
         return patched_count
 
+    def commit_with_retry(
+        self,
+        operations: List[CommitOperationAdd],
+        commit_message: str,
+        max_retries: int = 5,
+    ) -> None:
+        """Commit operations to Hugging Face with exponential backoff on Git conflicts."""
+        for attempt in range(1, max_retries + 1):
+            try:
+                self.api.create_commit(
+                    repo_id=self.repo_id,
+                    repo_type="dataset",
+                    operations=operations,
+                    commit_message=commit_message,
+                )
+                return
+            except Exception as e:
+                if attempt == max_retries:
+                    raise
+                wait_s = attempt * 3
+                print(f"  Warning: Commit attempt {attempt} failed ({e}). Retrying in {wait_s}s...")
+                time.sleep(wait_s)
+
     def patch_hf_state(
         self,
         state: str,
@@ -185,6 +208,7 @@ class ParquetUrlPatcher:
         dry_run: bool = False,
     ) -> None:
         """Patch Parquet files in a Hugging Face state partition in committed batches."""
+        import shutil
         clean_st = state.lower().replace(" ", "_").replace("-", "_")
         prefix = f"newspapers/{clean_st}"
         print(f"\n--- Scanning Hugging Face partition: {prefix} ---")
@@ -198,15 +222,17 @@ class ParquetUrlPatcher:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             pending_operations: List[CommitOperationAdd] = []
+            files_to_cleanup: List[Path] = []
 
             for idx, remote_path in enumerate(parquet_paths, start=1):
                 # Download file
                 try:
+                    cache_dir = tmp_path / "cache"
                     local_dl = self.api.hf_hub_download(
                         repo_id=self.repo_id,
                         repo_type="dataset",
                         filename=remote_path,
-                        cache_dir=str(tmp_path / "cache"),
+                        cache_dir=str(cache_dir),
                     )
                     table = pq.read_table(local_dl)
                     new_table, modified = self.patch_table(table)
@@ -219,6 +245,7 @@ class ParquetUrlPatcher:
                                 path_or_fileobj=str(out_file),
                             )
                         )
+                        files_to_cleanup.append(out_file)
                 except Exception as e:
                     print(f"Failed processing {remote_path}: {e}")
 
@@ -228,13 +255,17 @@ class ParquetUrlPatcher:
                         print(f"  [DRY-RUN] Would commit {len(pending_operations)} files to Hugging Face...")
                     else:
                         print(f"  Committing batch of {len(pending_operations)} patched files to {self.repo_id}...")
-                        self.api.create_commit(
-                            repo_id=self.repo_id,
-                            repo_type="dataset",
+                        self.commit_with_retry(
                             operations=pending_operations,
                             commit_message=f"Patch direct raw asset URLs for {clean_st} (batch up to {idx})",
                         )
                         print(f"  ✓ Committed batch ({idx}/{len(parquet_paths)} processed)")
+
+                    # Clean up disk space
+                    for f in files_to_cleanup:
+                        f.unlink(missing_ok=True)
+                    files_to_cleanup = []
+                    shutil.rmtree(tmp_path / "cache", ignore_errors=True)
                     pending_operations = []
 
             # Final commit
@@ -243,13 +274,14 @@ class ParquetUrlPatcher:
                     print(f"  [DRY-RUN] Would commit final {len(pending_operations)} files to Hugging Face...")
                 else:
                     print(f"  Committing final batch of {len(pending_operations)} patched files...")
-                    self.api.create_commit(
-                        repo_id=self.repo_id,
-                        repo_type="dataset",
+                    self.commit_with_retry(
                         operations=pending_operations,
                         commit_message=f"Patch direct raw asset URLs for {clean_st} (final batch)",
                     )
                     print("  ✓ Final commit complete")
+                for f in files_to_cleanup:
+                    f.unlink(missing_ok=True)
+                shutil.rmtree(tmp_path / "cache", ignore_errors=True)
 
 
 def main() -> None:
