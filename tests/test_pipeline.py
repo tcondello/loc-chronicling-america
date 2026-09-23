@@ -169,8 +169,9 @@ def test_pipeline_parquet_batch_processing(tmp_path):
     assert records[0]["year"] == 1915
     assert records[0]["sequence"] == 1
     assert records[0]["loc_page_url"] == "https://www.loc.gov/resource/sn85026945/1915-07-03/ed-1/?sp=1"
-    assert records[0]["pdf_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.pdf"
-    assert records[0]["image_url"] == "https://chroniclingamerica.loc.gov/lccn/sn85026945/1915-07-03/ed-1/seq-1.jp2"
+    assert records[0]["loc_item_url"] == "https://www.loc.gov/item/sn85026945/1915-07-03/ed-1/"
+    assert records[0]["pdf_url"] == "https://chroniclingamerica.loc.gov/data/batches/test_batch_01/data/sn85026945/1915070301/0001.pdf"
+    assert records[0]["image_url"] == "https://chroniclingamerica.loc.gov/data/batches/test_batch_01/data/sn85026945/1915070301/0001.jp2"
     assert records[0]["awardee"] == "University of Nebraska-Lincoln"
     assert records[0]["awardee_code"] == "nbu"
     assert records[0]["words"] == ["Front", "page"]

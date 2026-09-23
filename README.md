@@ -103,10 +103,10 @@ newspapers/
 | `city`, `state` | `string` | Geographic publication location |
 | `ethnicity` | `string` | Subject ethnicity if cataloged (e.g. *African American*) |
 | `char_count`, `word_count` | `int32` | Character and word statistics |
-| `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL |
-| `loc_item_url` | `string` | Canonical persistent LoC item URL |
-| `pdf_url` | `string` | Direct download link for single-page PDF on `tile.loc.gov` |
-| `image_url` | `string` | Direct download link for master JP2 scan on `tile.loc.gov` |
+| `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL (`loc.gov/resource/.../?sp=...`) |
+| `loc_item_url` | `string` | Canonical persistent Library of Congress catalog item record URL (`loc.gov/item/.../`) |
+| `pdf_url` | `string` | Direct download link for single-page PDF on `chroniclingamerica.loc.gov/data/batches/...` |
+| `image_url` | `string` | Direct download link for master JP2 scan on `chroniclingamerica.loc.gov/data/batches/...` |
 | `source_batch` | `string` | NDNP provenance batch name (e.g. `nbu_indescribablebeast_ver01`) |
 | `awardee` | `string` | Digitizing institution (e.g. *University of Nebraska-Lincoln*) |
 | `awardee_code` | `string` | Institution code prefix (e.g. `nbu`, `vi`, `iune`) |

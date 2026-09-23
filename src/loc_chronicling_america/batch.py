@@ -131,6 +131,53 @@ class Batch:
                 manifest[filepath.strip()] = md5.strip()
         return manifest
 
+    def get_manifest_asset_urls(self) -> Dict[Tuple[str, str, int, int], Dict[str, Any]]:
+        """Fetch and parse manifest-md5.txt to map (lccn, date, edition, seq) to direct JP2 and PDF URLs."""
+        url = f"{self.raw_batch_url}manifest-md5.txt"
+        try:
+            text = self.downloader.fetch_text(url)
+        except Exception:
+            return {}
+
+        pattern = re.compile(
+            r"data/(?P<lccn>[^/]+)/(?:(?P<reel>[^/]+)/)?(?P<issue>\d{8}(?P<edition>\d{2}))/(?P<frame>[^/]+)\.(?P<ext>jp2|pdf)$"
+        )
+        issues: Dict[Tuple[str, str], Dict[str, Any]] = defaultdict(lambda: {"jp2": [], "pdf": [], "reel": None})
+        for line in text.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                path = parts[1]
+                m = pattern.search(path)
+                if m:
+                    lccn = m.group("lccn")
+                    issue = m.group("issue")
+                    ext = m.group("ext")
+                    reel = m.group("reel")
+                    issues[(lccn, issue)][ext].append(path)
+                    if reel and not issues[(lccn, issue)]["reel"]:
+                        issues[(lccn, issue)]["reel"] = reel
+
+        url_map: Dict[Tuple[str, str, int, int], Dict[str, Any]] = {}
+        base_url = f"{self.raw_batch_url.rstrip('/')}/"
+        for (lccn, issue), data in issues.items():
+            year = issue[:4]
+            month = issue[4:6]
+            day = issue[6:8]
+            edition = int(issue[8:])
+            date_str = f"{year}-{month}-{day}"
+            reel = data["reel"]
+
+            sorted_jp2 = sorted(data["jp2"])
+            sorted_pdf = sorted(data["pdf"])
+            for idx, jp2_path in enumerate(sorted_jp2, start=1):
+                pdf_path = sorted_pdf[idx - 1] if idx - 1 < len(sorted_pdf) else None
+                url_map[(lccn, date_str, edition, idx)] = {
+                    "image_url": f"{base_url}{jp2_path}",
+                    "pdf_url": f"{base_url}{pdf_path}" if pdf_path else None,
+                    "reel_id": reel,
+                }
+        return url_map
+
     def get_issue_refs(self) -> List[BatchIssueRef]:
         """Fetch and parse batch_1.xml or batch.xml listing all issues in this batch."""
         for filename in ["batch_1.xml", "batch.xml"]:

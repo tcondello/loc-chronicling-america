@@ -109,10 +109,10 @@ Every page row conforms to the following schema:
 | `city`, `state` | `string` | Geographic origin of publication |
 | `ethnicity` | `string` | Subject ethnicity if cataloged (e.g. *African American*, *German*) |
 | `char_count`, `word_count` | `int32` | Text volume statistics |
-| `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL |
-| `loc_item_url` | `string` | Canonical persistent LoC resource URL |
-| `pdf_url` | `string` | Direct page PDF download URL on `tile.loc.gov` |
-| `image_url` | `string` | Direct high-resolution master scan (JP2) URL on `tile.loc.gov` |
+| `loc_page_url` | `string` | Live Library of Congress interactive page viewer URL (`loc.gov/resource/.../?sp=...`) |
+| `loc_item_url` | `string` | Canonical persistent Library of Congress catalog item record URL (`loc.gov/item/.../`) |
+| `pdf_url` | `string` | Direct page PDF download URL on `chroniclingamerica.loc.gov/data/batches/...` |
+| `image_url` | `string` | Direct master JP2 image download URL on `chroniclingamerica.loc.gov/data/batches/...` |
 | `source_batch` | `string` | Exact NDNP source batch identifier for provenance (e.g. `nbu_indescribablebeast_ver01`) |
 | `awardee` | `string` | Digitizing institution (e.g. *University of Nebraska-Lincoln*) |
 | `awardee_code` | `string` | Awardee prefix code (e.g. `nbu`, `vi`, `iune`) |

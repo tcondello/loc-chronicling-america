@@ -333,6 +333,9 @@ class BatchPipeline:
                 buffered_pages = 0
                 gc.collect()
 
+            # Pre-load direct asset URLs (JP2, PDF, real reel_id) from batch manifest-md5.txt
+            manifest_urls = batch_obj.get_manifest_asset_urls()
+
             for item in batch_obj.iter_archive(archive_path=tar_path, extract_xml=True, keep_alto_xml=False):
                 if not item.text:
                     continue
@@ -352,10 +355,20 @@ class BatchPipeline:
 
                 doc_id = f"{item.lccn}_{item.date}_ed-{item.edition}_seq-{item.sequence}"
 
-                # Real working LoC Page Viewer URL and Direct Asset URLs
+                # Real working LoC Page Viewer URL, Canonical Item URL, and Direct Raw Asset URLs
                 loc_page_url = f"https://www.loc.gov/resource/{item.lccn}/{item.date}/ed-{item.edition}/?sp={item.sequence}"
-                pdf_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.pdf"
-                image_url = f"https://chroniclingamerica.loc.gov/lccn/{item.lccn}/{item.date}/ed-{item.edition}/seq-{item.sequence}.jp2"
+                loc_item_url = f"https://www.loc.gov/item/{item.lccn}/{item.date}/ed-{item.edition}/"
+
+                asset_info = manifest_urls.get((item.lccn, item.date, int(item.edition), int(item.sequence)))
+                if asset_info and asset_info.get("image_url"):
+                    image_url = asset_info["image_url"]
+                    pdf_url = asset_info.get("pdf_url") or f"https://chroniclingamerica.loc.gov/data/batches/{batch_name}/data/{item.lccn}/{year_int:04d}{month_int:02d}{day_int:02d}{int(item.edition):02d}/{int(item.sequence):04d}.pdf"
+                    reel_id = asset_info.get("reel_id") or item.reel_id or ""
+                else:
+                    reel_part = f"{item.reel_id}/" if item.reel_id else ""
+                    image_url = f"https://chroniclingamerica.loc.gov/data/batches/{batch_name}/data/{item.lccn}/{reel_part}{year_int:04d}{month_int:02d}{day_int:02d}{int(item.edition):02d}/{int(item.sequence):04d}.jp2"
+                    pdf_url = f"https://chroniclingamerica.loc.gov/data/batches/{batch_name}/data/{item.lccn}/{reel_part}{year_int:04d}{month_int:02d}{day_int:02d}{int(item.edition):02d}/{int(item.sequence):04d}.pdf"
+                    reel_id = item.reel_id or ""
 
                 layout = item.layout_data or {}
 
@@ -378,13 +391,13 @@ class BatchPipeline:
                     "char_count": len(item.text),
                     "word_count": len(item.text.split()),
                     "loc_page_url": loc_page_url,
-                    "loc_item_url": loc_page_url,
+                    "loc_item_url": loc_item_url,
                     "pdf_url": pdf_url,
                     "image_url": image_url,
                     "source_batch": batch_name,
                     "awardee": awardee_full,
                     "awardee_code": awardee_code,
-                    "reel_id": item.reel_id or "",
+                    "reel_id": reel_id,
                     "ocr_engine": layout.get("ocr_engine") or "Unknown",
                     "page_width": layout.get("page_width", 0),
                     "page_height": layout.get("page_height", 0),
