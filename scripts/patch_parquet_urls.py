@@ -201,93 +201,111 @@ class ParquetUrlPatcher:
                 print(f"  Warning: Commit attempt {attempt} failed ({e}). Retrying in {wait_s}s...")
                 time.sleep(wait_s)
 
+    def list_hf_states(self) -> List[str]:
+        """List all state folder names under newspapers/ on Hugging Face."""
+        items = list(self.api.list_repo_tree(repo_id=self.repo_id, path_in_repo="newspapers", repo_type="dataset", recursive=False))
+        states: List[str] = []
+        for item in items:
+            name = item.path.split("/")[-1]
+            if name and not name.startswith("."):
+                states.append(name)
+        return sorted(states)
+
+    def _process_remote_file(
+        self,
+        remote_path: str,
+        tmp_path: Path,
+        idx: int,
+    ) -> Optional[Tuple[CommitOperationAdd, Path]]:
+        try:
+            cache_dir = tmp_path / "cache"
+            local_dl = self.api.hf_hub_download(
+                repo_id=self.repo_id,
+                repo_type="dataset",
+                filename=remote_path,
+                cache_dir=str(cache_dir),
+            )
+            table = pq.read_table(local_dl)
+            new_table, modified = self.patch_table(table)
+            if modified:
+                out_file = tmp_path / f"patched_{idx}_{os.getpid()}.parquet"
+                pq.write_table(new_table, out_file, compression="snappy")
+                return (
+                    CommitOperationAdd(
+                        path_in_repo=remote_path,
+                        path_or_fileobj=str(out_file),
+                    ),
+                    out_file,
+                )
+        except Exception as e:
+            print(f"Failed processing {remote_path}: {e}")
+        return None
+
     def patch_hf_state(
         self,
         state: str,
         batch_size: int = 250,
+        workers: int = 8,
         dry_run: bool = False,
     ) -> None:
         """Patch Parquet files in a Hugging Face state partition in committed batches."""
         import shutil
         clean_st = state.lower().replace(" ", "_").replace("-", "_")
         prefix = f"newspapers/{clean_st}"
-        print(f"\n--- Scanning Hugging Face partition: {prefix} ---")
+        print(f"\n--- Scanning Hugging Face partition: {prefix} ---", flush=True)
 
         all_entries = list(self.api.list_repo_tree(repo_id=self.repo_id, path_in_repo=prefix, repo_type="dataset", recursive=True))
         parquet_paths = [e.path for e in all_entries if e.path.endswith(".parquet")]
-        print(f"Found {len(parquet_paths)} Parquet files in {prefix}")
+        print(f"Found {len(parquet_paths)} Parquet files in {prefix}", flush=True)
         if not parquet_paths:
             return
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            pending_operations: List[CommitOperationAdd] = []
-            files_to_cleanup: List[Path] = []
 
-            for idx, remote_path in enumerate(parquet_paths, start=1):
-                # Download file
-                try:
-                    cache_dir = tmp_path / "cache"
-                    local_dl = self.api.hf_hub_download(
-                        repo_id=self.repo_id,
-                        repo_type="dataset",
-                        filename=remote_path,
-                        cache_dir=str(cache_dir),
-                    )
-                    table = pq.read_table(local_dl)
-                    new_table, modified = self.patch_table(table)
-                    if modified:
-                        out_file = tmp_path / f"patched_{idx}.parquet"
-                        pq.write_table(new_table, out_file, compression="snappy")
-                        pending_operations.append(
-                            CommitOperationAdd(
-                                path_in_repo=remote_path,
-                                path_or_fileobj=str(out_file),
-                            )
-                        )
-                        files_to_cleanup.append(out_file)
-                except Exception as e:
-                    print(f"Failed processing {remote_path}: {e}")
+            for chunk_start in range(0, len(parquet_paths), batch_size):
+                chunk = parquet_paths[chunk_start : chunk_start + batch_size]
+                pending_operations: List[CommitOperationAdd] = []
+                files_to_cleanup: List[Path] = []
 
-                # Commit in chunks
-                if len(pending_operations) >= batch_size:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(self._process_remote_file, path, tmp_path, chunk_start + i): path
+                        for i, path in enumerate(chunk)
+                    }
+                    for fut in concurrent.futures.as_completed(futures):
+                        res = fut.result()
+                        if res:
+                            op, out_file = res
+                            pending_operations.append(op)
+                            files_to_cleanup.append(out_file)
+
+                if pending_operations:
                     if dry_run:
-                        print(f"  [DRY-RUN] Would commit {len(pending_operations)} files to Hugging Face...")
+                        print(f"  [DRY-RUN] Would commit {len(pending_operations)} files to Hugging Face...", flush=True)
                     else:
-                        print(f"  Committing batch of {len(pending_operations)} patched files to {self.repo_id}...")
+                        print(f"  Committing batch of {len(pending_operations)} patched files to {self.repo_id}...", flush=True)
                         self.commit_with_retry(
                             operations=pending_operations,
-                            commit_message=f"Patch direct raw asset URLs for {clean_st} (batch up to {idx})",
+                            commit_message=f"Patch direct raw asset URLs for {clean_st} (chunk {chunk_start + len(chunk)}/{len(parquet_paths)})",
                         )
-                        print(f"  ✓ Committed batch ({idx}/{len(parquet_paths)} processed)")
-
-                    # Clean up disk space
-                    for f in files_to_cleanup:
-                        f.unlink(missing_ok=True)
-                    files_to_cleanup = []
-                    shutil.rmtree(tmp_path / "cache", ignore_errors=True)
-                    pending_operations = []
-
-            # Final commit
-            if pending_operations:
-                if dry_run:
-                    print(f"  [DRY-RUN] Would commit final {len(pending_operations)} files to Hugging Face...")
+                        print(f"  ✓ Committed batch ({chunk_start + len(chunk)}/{len(parquet_paths)} processed)", flush=True)
                 else:
-                    print(f"  Committing final batch of {len(pending_operations)} patched files...")
-                    self.commit_with_retry(
-                        operations=pending_operations,
-                        commit_message=f"Patch direct raw asset URLs for {clean_st} (final batch)",
-                    )
-                    print("  ✓ Final commit complete")
+                    print(f"  - Chunk {chunk_start + len(chunk)}/{len(parquet_paths)}: all files already up-to-date", flush=True)
+
+                # Clean up disk space
                 for f in files_to_cleanup:
                     f.unlink(missing_ok=True)
                 shutil.rmtree(tmp_path / "cache", ignore_errors=True)
+
+        print(f"✓ Completed patching partition for {clean_st}", flush=True)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch update Parquet files with direct NDNP asset URLs.")
     parser.add_argument("--local-dir", type=str, help="Local directory containing Parquet files to patch")
     parser.add_argument("--hf-state", type=str, help="State name to patch directly on Hugging Face (e.g. 'alaska')")
+    parser.add_argument("--all-states", action="store_true", help="Patch ALL states currently in Hugging Face")
     parser.add_argument("--repo-id", default="Tim-Pinecone/LOC-Chronicling-America", help="Hugging Face repo ID")
     parser.add_argument("--batch-size", type=int, default=250, help="Commit batch size for Hugging Face uploads")
     parser.add_argument("--workers", type=int, default=8, help="Worker threads for local patching")
@@ -297,10 +315,18 @@ def main() -> None:
 
     patcher = ParquetUrlPatcher(repo_id=args.repo_id)
 
-    if args.local_dir:
-        patcher.patch_local_dir(Path(args.local_dir), dry_run=args.dry_run, workers=args.workers)
+    if args.all_states or (args.hf_state and args.hf_state.lower() == "all"):
+        states = patcher.list_hf_states()
+        print(f"Discovered {len(states)} states on Hugging Face: {', '.join(states)}")
+        for idx, st in enumerate(states, start=1):
+            print(f"\n========================================================")
+            print(f"Processing State [{idx}/{len(states)}]: {st}")
+            print(f"========================================================")
+            patcher.patch_hf_state(st, batch_size=args.batch_size, workers=args.workers, dry_run=args.dry_run)
     elif args.hf_state:
-        patcher.patch_hf_state(args.hf_state, batch_size=args.batch_size, dry_run=args.dry_run)
+        patcher.patch_hf_state(args.hf_state, batch_size=args.batch_size, workers=args.workers, dry_run=args.dry_run)
+    elif args.local_dir:
+        patcher.patch_local_dir(Path(args.local_dir), dry_run=args.dry_run, workers=args.workers)
     else:
         parser.print_help()
 
