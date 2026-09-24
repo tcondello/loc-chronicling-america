@@ -37,7 +37,10 @@ for env_file in env_candidates:
         for line in env_file.read_text().splitlines():
             if line.strip() and not line.startswith("#") and "=" in line:
                 k, v = line.strip().split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
+                clean_k = k.strip()
+                clean_v = v.strip().strip("'\"")
+                if clean_k not in os.environ or not os.environ[clean_k].strip():
+                    os.environ[clean_k] = clean_v
         break
 
 
@@ -46,9 +49,12 @@ class ParquetUrlPatcher:
 
     def __init__(self, repo_id: str = "Tim-Pinecone/LOC-Chronicling-America", token: Optional[str] = None):
         self.repo_id = repo_id
-        self.token = token or os.getenv("HF_TOKEN")
+        resolved_token = token or os.getenv("HF_TOKEN") or ""
+        self.token = resolved_token.strip() if resolved_token and resolved_token.strip() else None
         if not self.token:
             print("WARNING: HF_TOKEN is not set! Writes and commits to Hugging Face will fail.", flush=True)
+        else:
+            print(f"HF_TOKEN loaded successfully ({len(self.token)} chars)", flush=True)
         self.api = HfApi(token=self.token)
         self.manifest_cache: Dict[str, Dict[Tuple[str, str, int, int], Dict[str, Any]]] = {}
 
@@ -322,13 +328,14 @@ def main() -> None:
     parser.add_argument("--hf-state", type=str, help="State name to patch directly on Hugging Face (e.g. 'alaska')")
     parser.add_argument("--all-states", action="store_true", help="Patch ALL states currently in Hugging Face")
     parser.add_argument("--repo-id", default="Tim-Pinecone/LOC-Chronicling-America", help="Hugging Face repo ID")
+    parser.add_argument("--token", help="Hugging Face API token (overrides HF_TOKEN env var)")
     parser.add_argument("--batch-size", type=int, default=250, help="Commit batch size for Hugging Face uploads")
     parser.add_argument("--workers", type=int, default=8, help="Worker threads for local patching")
     parser.add_argument("--dry-run", action="store_true", help="Inspect without modifying files or uploading")
 
     args = parser.parse_args()
 
-    patcher = ParquetUrlPatcher(repo_id=args.repo_id)
+    patcher = ParquetUrlPatcher(repo_id=args.repo_id, token=args.token)
 
     if args.all_states or (args.hf_state and args.hf_state.lower() == "all"):
         states = patcher.list_hf_states()
