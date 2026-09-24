@@ -26,22 +26,57 @@ from loc_chronicling_america.batch import Batch
 
 disable_progress_bars()
 
-# Load .env if present (check cwd, script parent, and standard app dir)
-env_candidates = [
-    Path(".env"),
-    Path(__file__).resolve().parent.parent / ".env",
-    Path("/home/ubuntu/loc-chronicling-america/.env"),
-]
-for env_file in env_candidates:
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            if line.strip() and not line.startswith("#") and "=" in line:
-                k, v = line.strip().split("=", 1)
-                clean_k = k.strip()
-                clean_v = v.strip().strip("'\"")
-                if clean_k not in os.environ or not os.environ[clean_k].strip():
-                    os.environ[clean_k] = clean_v
-        break
+def resolve_hf_token(explicit_token: Optional[str] = None) -> Optional[str]:
+    """Find Hugging Face token from explicit arg, env, parent .env files, or HF cache."""
+    if explicit_token and explicit_token.strip():
+        return explicit_token.strip()
+
+    # 1. Shell environment variable
+    env_token = os.getenv("HF_TOKEN")
+    if env_token and env_token.strip():
+        return env_token.strip()
+
+    # 2. Walk up parent directories to find .env (works from scripts/, infra/, root, etc.)
+    check_dir = Path(__file__).resolve().parent
+    for _ in range(5):
+        cand = check_dir / ".env"
+        if cand.exists():
+            try:
+                for line in cand.read_text().splitlines():
+                    if line.strip().startswith("HF_TOKEN="):
+                        token_val = line.split("=", 1)[1].strip().strip("'\"")
+                        if token_val:
+                            os.environ["HF_TOKEN"] = token_val
+                            return token_val
+            except Exception:
+                pass
+        check_dir = check_dir.parent
+
+    # 3. Standard EC2 worker path
+    ec2_env = Path("/home/ubuntu/loc-chronicling-america/.env")
+    if ec2_env.exists():
+        try:
+            for line in ec2_env.read_text().splitlines():
+                if line.strip().startswith("HF_TOKEN="):
+                    token_val = line.split("=", 1)[1].strip().strip("'\"")
+                    if token_val:
+                        os.environ["HF_TOKEN"] = token_val
+                        return token_val
+        except Exception:
+            pass
+
+    # 4. Hugging Face CLI login cache (~/.cache/huggingface/token)
+    hf_cache = Path.home() / ".cache" / "huggingface" / "token"
+    if hf_cache.exists():
+        try:
+            token_val = hf_cache.read_text().strip()
+            if token_val:
+                os.environ["HF_TOKEN"] = token_val
+                return token_val
+        except Exception:
+            pass
+
+    return None
 
 
 class ParquetUrlPatcher:
@@ -49,12 +84,15 @@ class ParquetUrlPatcher:
 
     def __init__(self, repo_id: str = "Tim-Pinecone/LOC-Chronicling-America", token: Optional[str] = None):
         self.repo_id = repo_id
-        resolved_token = token or os.getenv("HF_TOKEN") or ""
-        self.token = resolved_token.strip() if resolved_token and resolved_token.strip() else None
+        self.token = resolve_hf_token(token)
         if not self.token:
-            print("WARNING: HF_TOKEN is not set! Writes and commits to Hugging Face will fail.", flush=True)
-        else:
-            print(f"HF_TOKEN loaded successfully ({len(self.token)} chars)", flush=True)
+            raise RuntimeError(
+                "Hugging Face token not found! Please export your token in your shell:\n"
+                "  export HF_TOKEN='your_token_here'\n"
+                "or log in via:\n"
+                "  huggingface-cli login"
+            )
+        print(f"✓ HF_TOKEN authenticated successfully ({self.token[:7]}...)", flush=True)
         self.api = HfApi(token=self.token)
         self.manifest_cache: Dict[str, Dict[Tuple[str, str, int, int], Dict[str, Any]]] = {}
 
