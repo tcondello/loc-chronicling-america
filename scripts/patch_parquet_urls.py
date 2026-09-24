@@ -21,7 +21,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import pyarrow as pa
 import pyarrow.parquet as pq
 from huggingface_hub import CommitOperationAdd, HfApi
+from huggingface_hub.utils import disable_progress_bars
 from loc_chronicling_america.batch import Batch
+
+disable_progress_bars()
 
 # Load .env if present (check cwd, script parent, and standard app dir)
 env_candidates = [
@@ -271,10 +274,14 @@ class ParquetUrlPatcher:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
 
-            for chunk_start in range(0, len(parquet_paths), batch_size):
+            total_files = len(parquet_paths)
+            for chunk_start in range(0, total_files, batch_size):
                 chunk = parquet_paths[chunk_start : chunk_start + batch_size]
+                chunk_end = min(chunk_start + len(chunk), total_files)
                 pending_operations: List[CommitOperationAdd] = []
                 files_to_cleanup: List[Path] = []
+
+                print(f"  [{chunk_end:,}/{total_files:,} ({chunk_end/total_files*100:.1f}%)] Downloading and inspecting {len(chunk)} files...", flush=True)
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
                     futures = {
@@ -290,16 +297,16 @@ class ParquetUrlPatcher:
 
                 if pending_operations:
                     if dry_run:
-                        print(f"  [DRY-RUN] Would commit {len(pending_operations)} files to Hugging Face...", flush=True)
+                        print(f"    [DRY-RUN] Would commit {len(pending_operations)} files to Hugging Face...", flush=True)
                     else:
-                        print(f"  Committing batch of {len(pending_operations)} patched files to {self.repo_id}...", flush=True)
+                        print(f"    Committing {len(pending_operations)} patched files to {self.repo_id}...", flush=True)
                         self.commit_with_retry(
                             operations=pending_operations,
-                            commit_message=f"Patch direct raw asset URLs for {clean_st} (chunk {chunk_start + len(chunk)}/{len(parquet_paths)})",
+                            commit_message=f"Patch direct raw asset URLs for {clean_st} (chunk {chunk_end}/{total_files})",
                         )
-                        print(f"  ✓ Committed batch ({chunk_start + len(chunk)}/{len(parquet_paths)} processed)", flush=True)
+                        print(f"    ✓ Committed {len(pending_operations)} files", flush=True)
                 else:
-                    print(f"  - Chunk {chunk_start + len(chunk)}/{len(parquet_paths)}: all files already up-to-date", flush=True)
+                    print(f"    - All {len(chunk)} files in chunk already have correct URLs (skipped)", flush=True)
 
                 # Clean up disk space
                 for f in files_to_cleanup:
