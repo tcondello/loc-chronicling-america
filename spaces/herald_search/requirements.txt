@@ -1,0 +1,12 @@
+gradio>=6.28.0
+spaces>=0.50.0
+streamlit>=1.40.0
+pinecone>=10.0.0
+openai>=1.50.0
+chonkie>=1.7.0
+tiktoken>=0.8.0
+pyarrow>=17.0.0
+huggingface-hub>=0.25.0
+python-dotenv>=1.0.0
+httpx>=0.28.0
+snowballstemmer>=2.2.0

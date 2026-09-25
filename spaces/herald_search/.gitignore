@@ -1,0 +1,7 @@
+.env
+data/
+.prepare_done
+.ingest_offset
+__pycache__/
+*.pyc
+.DS_Store

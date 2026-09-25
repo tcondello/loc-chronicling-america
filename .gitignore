@@ -21,6 +21,9 @@ export_data/
 pipeline_demo_output/
 *.sqlite
 *.sqlite3
+*.jsonl
+spaces/**/data/
+.ingest_offset*
 
 # Distribution / packaging
 build/
