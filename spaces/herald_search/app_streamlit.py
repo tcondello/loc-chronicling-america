@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 import config
 import highlight as hl
-from iiif import jp2_to_iiif_url
+from iiif import jp2_to_iiif_url, normalize_iiif_url
 import query as q
 
 load_dotenv()
@@ -264,8 +264,8 @@ def render_card(hit: Any, query: str):
     pdf_url = fields.get("pdf_url", "")
     jp2_url = fields.get("image_url", "")
     raw_thumb = fields.get("iiif_thumb_url", "")
-    thumb_url = raw_thumb if raw_thumb else jp2_to_iiif_url(jp2_url, size="600,")
-    high_res_url = jp2_to_iiif_url(jp2_url, size="1600,")
+    thumb_url = normalize_iiif_url(raw_thumb or jp2_url, size="600,")
+    high_res_url = normalize_iiif_url(jp2_url or raw_thumb, size="1600,")
 
     text_body = fields.get("text", "")
     highlighted_html = hl.highlight_text(text_body, query)

@@ -10,14 +10,42 @@ from typing import Optional
 
 
 def extract_iiif_identifier(jp2_url: str) -> Optional[str]:
-    """Extract standard LoC IIIF service identifier from a JP2 URL.
+    """Extract standard LoC IIIF service identifier from a JP2 URL or IIIF URL.
 
     Handles formats:
     - https://chroniclingamerica.loc.gov/data/batches/{batch}/data/{lccn}/{reel}/{issue_dir}/{frame}.jp2
+    - https://chroniclingamerica.loc.gov/data/batches/{batch}/data/{lccn}/{issue_dir}/{frame}.jp2 (missing reel)
     - https://tile.loc.gov/storage-services/service/ndnp/{awardee}/{batch}/data/{lccn}/{reel}/{issue_dir}/{frame}.jp2
+    - https://tile.loc.gov/image-services/iiif/service:ndnp:...
     """
     if not jp2_url or not isinstance(jp2_url, str):
         return None
+
+    # Handle if already a IIIF URL with service:ndnp:...
+    if "service:ndnp:" in jp2_url:
+        m_svc = re.search(r"(service:ndnp:[^/]+)", jp2_url)
+        if m_svc:
+            svc_id = m_svc.group(1)
+            # Fix batch_nn_hardin_ver01 placeholder if present
+            if "batch_nn_hardin_ver01" in svc_id:
+                m_frame = re.search(r"(191012\d{2}\d{2}):(\d{4})", svc_id)
+                if m_frame:
+                    date_ed, frame_str = m_frame.groups()
+                    p = int(frame_str)
+                    if date_ed.startswith("19101201"):
+                        real_frame = f"{7 + p:04d}" if p <= 20 else frame_str
+                    elif date_ed.startswith("19101202"):
+                        real_frame = f"{27 + p:04d}" if p <= 24 else frame_str
+                    elif date_ed.startswith("19101203"):
+                        real_frame = f"{51 + p:04d}" if p <= 12 else frame_str
+                    else:
+                        real_frame = frame_str
+                    svc_id = re.sub(
+                        r"data:sn83030193:(?:00000000000:)?(191012\d{4}):\d{4}",
+                        f"data:sn83030193:0028076582A:\\1:{real_frame}",
+                        svc_id,
+                    )
+            return svc_id
 
     # Format 1: chroniclingamerica.loc.gov/data/batches/{batch}/data/{lccn}/{reel}/{issue_dir}/{frame}.jp2
     m1 = re.search(
@@ -26,7 +54,20 @@ def extract_iiif_identifier(jp2_url: str) -> Optional[str]:
     )
     if m1:
         batch, lccn, reel, date_ed, frame = m1.groups()
-        reel = reel or "00000000000"
+        # Special case: The Evening World batch_nn_hardin_ver01 (Dec 1910)
+        # where reel is omitted in upstream Parquet and frames are consecutive on reel 0028076582A
+        if batch in ("nn_hardin_ver01", "batch_nn_hardin_ver01") and lccn == "sn83030193":
+            reel = "0028076582A"
+            p = int(frame)
+            if date_ed.startswith("19101201"):
+                frame = f"{7 + p:04d}" if p <= 20 else frame
+            elif date_ed.startswith("19101202"):
+                frame = f"{27 + p:04d}" if p <= 24 else frame
+            elif date_ed.startswith("19101203"):
+                frame = f"{51 + p:04d}" if p <= 12 else frame
+        else:
+            reel = reel or "00000000000"
+
         awardee = batch.split("_")[0]
         batch_folder = batch if batch.startswith("batch_") else f"batch_{batch}"
         return f"service:ndnp:{awardee}:{batch_folder}:data:{lccn}:{reel}:{date_ed}:{frame}"
@@ -52,20 +93,21 @@ def jp2_to_iiif_url(
     quality: str = "default",
     format_ext: str = "jpg",
 ) -> str:
-    """Transform an LoC JP2 master scan URL into a web-ready IIIF JPEG URL.
-
-    Args:
-        jp2_url: Raw JP2 link from dataset.
-        region: 'full', 'x,y,w,h' pixel box, or 'pct:x,y,w,h'.
-        size: '600,' (width 600px, auto aspect), 'pct:25', or 'full'.
-        rotation: Degrees of rotation (0, 90, 180, 270).
-        quality: Image quality ('default', 'gray', 'bitonal').
-        format_ext: File format extension ('jpg', 'png').
-    """
+    """Transform an LoC JP2 master scan URL into a web-ready IIIF JPEG URL."""
     iiif_id = extract_iiif_identifier(jp2_url)
     if not iiif_id:
         return jp2_url
     return f"https://tile.loc.gov/image-services/iiif/{iiif_id}/{region}/{size}/{rotation}/{quality}.{format_ext}"
+
+
+def normalize_iiif_url(url_or_jp2: str, size: str = "600,") -> str:
+    """Guarantee a valid, working LoC IIIF endpoint from any JP2 or legacy IIIF URL."""
+    if not url_or_jp2 or not isinstance(url_or_jp2, str):
+        return ""
+    iiif_id = extract_iiif_identifier(url_or_jp2)
+    if not iiif_id:
+        return url_or_jp2
+    return f"https://tile.loc.gov/image-services/iiif/{iiif_id}/full/{size}/0/default.jpg"
 
 
 def jp2_to_iiif_info(jp2_url: str) -> Optional[str]:

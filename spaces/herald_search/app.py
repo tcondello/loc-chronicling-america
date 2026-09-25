@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 import config
 import highlight as hl
-from iiif import jp2_to_iiif_url
+from iiif import jp2_to_iiif_url, normalize_iiif_url
 import query as q
 
 load_dotenv()
@@ -352,8 +352,9 @@ def hit_to_card_html(hit: Any, query_str: str) -> str:
         accent_color = "#d97706"
 
     file_path = fields.get("file_path") or fields.get("image_url", "")
-    thumb_url = fields.get("iiif_thumb_url") or jp2_to_iiif_url(file_path, size="600,")
-    high_res_url = jp2_to_iiif_url(file_path, size="1600,")
+    raw_thumb = fields.get("iiif_thumb_url") or ""
+    thumb_url = normalize_iiif_url(raw_thumb or file_path, size="600,")
+    high_res_url = normalize_iiif_url(file_path or raw_thumb, size="1600,")
     loc_page = fields.get("loc_page_url", "")
     pdf_url = fields.get("pdf_url", "")
 
