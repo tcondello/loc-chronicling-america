@@ -32,6 +32,7 @@ import query as q
 import story_data as sd
 
 load_dotenv()
+os.environ["GRADIO_SSR_MODE"] = "False"
 
 # Hugging Face ZeroGPU validation no-op
 try:
@@ -57,6 +58,7 @@ except Exception as e:
 
 # Initialize Gradio Server (FastAPI subclass with HF Spaces compatibility)
 app = gr.Server(title="Coast-to-Coast & Nationwide Historical Newspaper Search (1890–1910)")
+demo = app
 
 MODES = ["Query string (Lucene)", "Hybrid", "Full-text (BM25)", "Semantic"]
 
@@ -654,4 +656,4 @@ async def api_calendar(request: Request):
 
 
 if __name__ == "__main__":
-    app.launch(server_name="127.0.0.1", server_port=7860)
+    app.launch(server_name="0.0.0.0", server_port=7860, ssr_mode=False)
