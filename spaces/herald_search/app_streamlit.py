@@ -329,7 +329,7 @@ with tab_story:
         f"""
         <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #cbd5e1; border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1.1rem;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="background:#0f172a; color:#fff; padding:0.2rem 0.6rem; border-radius:9999px; font-size:0.78rem; font-weight:700;">Chapter {chapter['number']} of 7</span>
+            <span style="background:#0f172a; color:#fff; padding:0.2rem 0.6rem; border-radius:9999px; font-size:0.78rem; font-weight:700;">Chapter {chapter['number']} of {len(sd.CHAPTERS)}</span>
             <span style="color:#64748b; font-size:0.85rem; font-weight:600;">{chapter['badge']}</span>
           </div>
           <h2 style="margin:0.35rem 0 0.15rem 0; font-family:Georgia, serif; color:#0f172a;">{chapter['title']}</h2>
@@ -340,11 +340,20 @@ with tab_story:
         unsafe_allow_html=True,
     )
 
-    c_west, c_east = st.columns(2)
-    with c_west:
-        st.info(chapter["west_angle"])
-    with c_east:
-        st.info(chapter["east_angle"])
+    if chapter.get("midwest_angle"):
+        c_west, c_east, c_midwest = st.columns(3)
+        with c_west:
+            st.info(chapter["west_angle"])
+        with c_east:
+            st.info(chapter["east_angle"])
+        with c_midwest:
+            st.success(chapter["midwest_angle"])
+    else:
+        c_west, c_east = st.columns(2)
+        with c_west:
+            st.info(chapter["west_angle"])
+        with c_east:
+            st.info(chapter["east_angle"])
     st.caption(f"Key Figures: {figures_pills}")
 
     # Query Execution for Chapter

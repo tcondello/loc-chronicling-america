@@ -15,6 +15,7 @@ This directory contains standalone, runnable Python examples demonstrating how t
 | [`05_export_pinecone_jsonl.py`](05_export_pinecone_jsonl.py) | **Pinecone Document Schema Export** | Downloads newspaper pages and produces validated Pinecone Document Schema JSONL (`<import_dir>/<namespace>/0.jsonl`) ready for object storage import. |
 | [`06_run_streaming_pipeline.py`](06_run_streaming_pipeline.py) | **Streaming Batch Ingestion** | Transmutes raw `.tar.bz2` NDNP archives directly into compressed issue-level Apache Parquet files with zero local disk accumulation. |
 | [`07_convert_parquet_to_pinecone.py`](07_convert_parquet_to_pinecone.py) | **Parquet to Pinecone Converter** | Converts generated Apache Parquet datasets into chunked Pinecone Document Schema JSONL files for vector search ingestion. |
+| [`08_test_laya_pinecone.py`](08_test_laya_pinecone.py) | **Laya Local Decision Engine & OCR Audit** | Evaluates random Pinecone newspaper chunks with Laya System 1 decision heads (NER entity presence, topic categorization, editorial triage, and good vs. bad OCR quality audit). |
 
 ---
 
@@ -48,4 +49,7 @@ python examples/06_run_streaming_pipeline.py --batch nbu_indescribablebeast_ver0
 
 # Example 7: Convert Parquet files to Pinecone JSONL shards
 python examples/07_convert_parquet_to_pinecone.py --input ./export_data/newspapers/nebraska/ --output ./pinecone_output
+
+# Example 8: Test Laya System 1 decisions and Good vs. Bad OCR audit on Pinecone chunks
+python examples/08_test_laya_pinecone.py --preset ocr
 ```

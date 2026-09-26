@@ -10,7 +10,7 @@ Exposes the full Pinecone Document Schema search capabilities:
 
 import concurrent.futures
 import os
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -93,7 +93,8 @@ def embed_query(oai: OpenAI, text: str) -> List[float]:
 
 def build_filter(
     state: Optional[str] = None,
-    newspaper_slug: Optional[str] = None,
+    newspaper_slug: Optional[Union[str, List[str]]] = None,
+    region: Optional[str] = None,
     year: Optional[int] = None,
     month: Optional[Any] = None,
     day: Optional[Any] = None,
@@ -105,7 +106,9 @@ def build_filter(
     """Assemble a Pinecone filter dict combining metadata and optional lexical filters."""
     filt: Dict[str, Any] = {}
 
-    if state and state.strip().lower() not in ("all states", "all", "(all)", ""):
+    if region and region.lower() in config.REGIONS and region.lower() != "all":
+        filt["newspaper_slug"] = {"$in": config.REGIONS[region.lower()]}
+    elif state and state.strip().lower() not in ("all states", "all", "(all)", ""):
         s = state.strip().lower()
         if "california" in s:
             filt["newspaper_slug"] = {"$in": ["los_angeles_herald", "the_san_francisco_call"]}
@@ -116,8 +119,25 @@ def build_filter(
         elif "illinois" in s:
             filt["newspaper_slug"] = {"$eq": "chicago_eagle"}
 
-    if newspaper_slug and newspaper_slug not in ("(all)", "all", "Both Newspapers (Side-by-Side Comparison)", "All Newspapers (Nationwide)", ""):
-        filt["newspaper_slug"] = {"$eq": newspaper_slug}
+    if newspaper_slug:
+        if isinstance(newspaper_slug, list):
+            filt["newspaper_slug"] = {"$in": newspaper_slug}
+        elif isinstance(newspaper_slug, str):
+            ns_clean = newspaper_slug.strip()
+            if ns_clean.lower() in config.REGIONS and ns_clean.lower() != "all":
+                filt["newspaper_slug"] = {"$in": config.REGIONS[ns_clean.lower()]}
+            elif ns_clean in config.NEWSPAPERS:
+                filt["newspaper_slug"] = {"$eq": ns_clean}
+            elif ns_clean not in ("(all)", "all", "Both Newspapers (Side-by-Side Comparison)", "All Newspapers (Nationwide)", "Nationwide Archive (All 6 Publications)", ""):
+                # Substring match against registered titles or slugs
+                matched_slug = None
+                for slug, meta in config.NEWSPAPERS.items():
+                    if meta["title"].lower() in ns_clean.lower() or slug in ns_clean.lower():
+                        matched_slug = slug
+                        break
+                if matched_slug:
+                    filt["newspaper_slug"] = {"$eq": matched_slug}
+
     if year:
         filt["year"] = {"$eq": int(year)}
     if month and str(month) not in ("(any)", "all", "(all)", ""):
@@ -313,10 +333,30 @@ def search_cross_years(
     pinecone_ms = (time.time() - t_pc_0) * 1000.0
     total_ms = (time.time() - t0) * 1000.0
 
-    # Merge all hits chronologically
+    # Merge all hits chronologically and group by publication
     merged = []
+    by_newspaper: Dict[str, List[Any]] = {slug: [] for slug in config.NEWSPAPERS.keys()}
+    newspaper_counts: Dict[str, int] = {slug: 0 for slug in config.NEWSPAPERS.keys()}
+    year_np_counts: Dict[str, Dict[str, int]] = {yr: {slug: 0 for slug in config.NEWSPAPERS.keys()} for yr in namespaces}
+
     for yr in sorted(results_by_year.keys()):
-        merged.extend(results_by_year[yr])
+        for h in results_by_year[yr]:
+            merged.append(h)
+            doc = h.to_dict() if hasattr(h, "to_dict") else (h if isinstance(h, dict) else {})
+            fields = getattr(h, "fields", None) or doc
+            s = fields.get("newspaper_slug") or "unknown"
+            if s in by_newspaper:
+                by_newspaper[s].append(h)
+                newspaper_counts[s] += 1
+            else:
+                by_newspaper[s] = [h]
+                newspaper_counts[s] = 1
+
+            if yr in year_np_counts:
+                if s in year_np_counts[yr]:
+                    year_np_counts[yr][s] += 1
+                else:
+                    year_np_counts[yr][s] = 1
 
     def sort_key(hit):
         doc = hit.to_dict() if hasattr(hit, "to_dict") else (hit if isinstance(hit, dict) else {})
@@ -329,9 +369,12 @@ def search_cross_years(
 
     result = {
         "by_year": results_by_year,
+        "by_newspaper": by_newspaper,
         "merged": merged,
         "total_hits": len(merged),
         "year_counts": year_counts,
+        "newspaper_counts": newspaper_counts,
+        "year_np_counts": year_np_counts,
         "metrics": {
             "embed_ms": round(embed_ms, 1),
             "pinecone_ms": round(pinecone_ms, 1),
@@ -356,23 +399,36 @@ def search_side_by_side(
     match_terms: Optional[str] = None,
     top_k_per_year: int = 5,
     base_filter_dict: Optional[Dict[str, Any]] = None,
+    slugs: Optional[List[str]] = None,
+    semantic_query: Optional[str] = None,
+    fulltext_query: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Execute paired searches across both newspapers via a flat parallel pool:
+    """Execute concurrent queries across multiple specified publications via a flat parallel pool.
+    
+    Supports dual-path hybrid search (dense semantic embedding + lexical query_string with RRF fusion)
+    when both semantic_query and fulltext_query are provided.
+    
+    If slugs is omitted, defaults to comparing the two coastal anchors:
     - West Coast: Los Angeles Herald
     - East Coast: The Evening World (New York)
 
     Returns:
         {
-            "la": search_cross_years results for los_angeles_herald,
-            "ny": search_cross_years results for the_evening_world,
-            "metrics": {
-                "embed_ms": float,
-                "pinecone_ms": float,
-                "total_ms": float,
-            }
+            "la": search results for los_angeles_herald,
+            "ny": search results for the_evening_world,
+            "by_newspaper": { slug: { "by_year", "merged", "total_hits", "year_counts" } },
+            "newspaper_counts": { slug: count },
+            "all_merged": list of all hits across all queried publications,
+            "total_hits": int,
+            "metrics": { "embed_ms": float, "pinecone_ms": float, "total_ms": float }
         }
     """
-    cache_key = f"sbs_{query}_{mode}_{','.join(sorted(namespaces))}_{match_op}_{match_terms}_{top_k_per_year}_{json.dumps(base_filter_dict, sort_keys=True) if base_filter_dict else ''}"
+    target_slugs = slugs if slugs else ["los_angeles_herald", "the_evening_world"]
+    sem_q = semantic_query.strip() if semantic_query and semantic_query.strip() else query.strip()
+    fts_q = fulltext_query.strip() if fulltext_query and fulltext_query.strip() else query.strip()
+    is_dual_path = bool(semantic_query and fulltext_query) or (mode == "Hybrid (Dual-Path RRF)")
+
+    cache_key = f"sbs_{query}_{sem_q}_{fts_q}_{mode}_{','.join(sorted(namespaces))}_{','.join(sorted(target_slugs))}_{match_op}_{match_terms}_{top_k_per_year}_{json.dumps(base_filter_dict, sort_keys=True) if base_filter_dict else ''}"
     if cache_key in _SEARCH_CACHE:
         cached = dict(_SEARCH_CACHE[cache_key])
         cached["metrics"] = dict(cached["metrics"])
@@ -383,28 +439,57 @@ def search_side_by_side(
     embed_ms = 0.0
     emb = None
 
-    if mode in ("Semantic", "Hybrid"):
+    if is_dual_path or mode in ("Semantic", "Hybrid"):
         t_emb_0 = time.time()
-        emb = embed_query(oai, query)
+        emb = embed_query(oai, sem_q)
         embed_ms = (time.time() - t_emb_0) * 1000.0
-
-    filter_la = dict(base_filter_dict or {})
-    filter_la["newspaper_slug"] = {"$eq": "los_angeles_herald"}
-
-    filter_ny = dict(base_filter_dict or {})
-    filter_ny["newspaper_slug"] = {"$eq": "the_evening_world"}
 
     t_pc_0 = time.time()
 
-    # Flatten all tasks across both newspapers and all year namespaces into a single pool
+    # Flatten all tasks across all publications and year namespaces into a single pool
     tasks = []
-    for ns in namespaces:
-        tasks.append(("la", ns, filter_la))
-        tasks.append(("ny", ns, filter_ny))
+    for slug in target_slugs:
+        slug_filter = dict(base_filter_dict or {})
+        slug_filter["newspaper_slug"] = {"$eq": slug}
+        for ns in namespaces:
+            tasks.append((slug, ns, slug_filter))
 
-    def _query_task(target: str, ns: str, filt: Dict[str, Any]):
+    def _query_task(target_slug: str, ns: str, filt: Dict[str, Any]):
         try:
-            if mode == "Full-text (BM25)":
+            if is_dual_path:
+                # Dual-Path Hybrid: Semantic Dense Search + Lucene FTS combined via RRF
+                res_sem = search_semantic(index, oai, sem_q, namespace=ns, top_k=top_k_per_year * 2, filter_dict=filt, embedding=emb)
+                res_fts = search_query_string(index, fts_q, namespace=ns, top_k=top_k_per_year * 2, filter_dict=filt)
+
+                matches_sem = getattr(res_sem, "matches", []) or []
+                matches_fts = getattr(res_fts, "matches", []) or []
+
+                rrf_scores: Dict[str, float] = {}
+                doc_map: Dict[str, Any] = {}
+
+                for rank, m in enumerate(matches_sem):
+                    mid = getattr(m, "id", getattr(m, "_id", ""))
+                    rrf_scores[mid] = rrf_scores.get(mid, 0.0) + (1.0 / (60.0 + rank + 1))
+                    doc_map[mid] = m
+
+                for rank, m in enumerate(matches_fts):
+                    mid = getattr(m, "id", getattr(m, "_id", ""))
+                    rrf_scores[mid] = rrf_scores.get(mid, 0.0) + (1.0 / (60.0 + rank + 1))
+                    if mid not in doc_map:
+                        doc_map[mid] = m
+
+                sorted_mids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)[:top_k_per_year]
+                hits = []
+                for mid in sorted_mids:
+                    m = doc_map[mid]
+                    d = m.to_dict() if hasattr(m, "to_dict") else dict(m)
+                    d["namespace"] = ns
+                    d["_score"] = rrf_scores[mid]
+                    d["_id"] = mid
+                    hits.append(d)
+                return target_slug, ns, hits
+
+            elif mode == "Full-text (BM25)":
                 res = search_text(index, query, namespace=ns, top_k=top_k_per_year, filter_dict=filt)
             elif mode == "Query string (Lucene)":
                 res = search_query_string(index, query, namespace=ns, top_k=top_k_per_year, filter_dict=filt)
@@ -430,22 +515,18 @@ def search_side_by_side(
                 d["_score"] = getattr(m, "score", d.get("_score", 0.0))
                 d["_id"] = getattr(m, "id", d.get("_id", ""))
                 hits.append(d)
-            return target, ns, hits
+            return target_slug, ns, hits
         except Exception as e:
-            print(f"Error querying {target} in namespace {ns}: {e}")
-            return target, ns, []
+            print(f"Error querying {target_slug} in namespace {ns}: {e}")
+            return target_slug, ns, []
 
-    results_la_by_year: Dict[str, List[Any]] = {yr: [] for yr in namespaces}
-    results_ny_by_year: Dict[str, List[Any]] = {yr: [] for yr in namespaces}
+    results_by_slug_by_year: Dict[str, Dict[str, List[Any]]] = {slug: {yr: [] for yr in namespaces} for slug in target_slugs}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(18, len(tasks))) as executor:
-        fut_map = {executor.submit(_query_task, target, ns, filt): (target, ns) for target, ns, filt in tasks}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(24, max(1, len(tasks)))) as executor:
+        fut_map = {executor.submit(_query_task, target_slug, ns, filt): (target_slug, ns) for target_slug, ns, filt in tasks}
         for fut in concurrent.futures.as_completed(fut_map):
-            target, ns, hits = fut.result()
-            if target == "la":
-                results_la_by_year[ns] = hits
-            else:
-                results_ny_by_year[ns] = hits
+            target_slug, ns, hits = fut.result()
+            results_by_slug_by_year[target_slug][ns] = hits
 
     pinecone_ms = (time.time() - t_pc_0) * 1000.0
     total_ms = (time.time() - t0) * 1000.0
@@ -455,35 +536,39 @@ def search_side_by_side(
         fields = getattr(hit, "fields", None) or doc
         return (str(fields.get("date", "")), int(fields.get("sequence", 1)), int(fields.get("chunk_index", 0)))
 
-    la_merged = []
-    for yr in sorted(results_la_by_year.keys()):
-        la_merged.extend(results_la_by_year[yr])
-    la_merged.sort(key=sort_key)
-    la_counts = {yr: len(results_la_by_year.get(yr, [])) for yr in namespaces}
-    res_la = {
-        "by_year": results_la_by_year,
-        "merged": la_merged,
-        "total_hits": len(la_merged),
-        "year_counts": la_counts,
-        "metrics": {"embed_ms": round(embed_ms, 1), "pinecone_ms": round(pinecone_ms, 1), "total_ms": round(total_ms, 1)},
-    }
+    by_newspaper: Dict[str, Dict[str, Any]] = {}
+    newspaper_counts: Dict[str, int] = {}
+    all_merged = []
 
-    ny_merged = []
-    for yr in sorted(results_ny_by_year.keys()):
-        ny_merged.extend(results_ny_by_year[yr])
-    ny_merged.sort(key=sort_key)
-    ny_counts = {yr: len(results_ny_by_year.get(yr, [])) for yr in namespaces}
-    res_ny = {
-        "by_year": results_ny_by_year,
-        "merged": ny_merged,
-        "total_hits": len(ny_merged),
-        "year_counts": ny_counts,
-        "metrics": {"embed_ms": round(embed_ms, 1), "pinecone_ms": round(pinecone_ms, 1), "total_ms": round(total_ms, 1)},
-    }
+    for slug in target_slugs:
+        slug_years = results_by_slug_by_year[slug]
+        slug_merged = []
+        for yr in sorted(slug_years.keys()):
+            slug_merged.extend(slug_years[yr])
+        slug_merged.sort(key=sort_key)
+        all_merged.extend(slug_merged)
+        counts = {yr: len(slug_years.get(yr, [])) for yr in namespaces}
+        res_slug = {
+            "by_year": slug_years,
+            "merged": slug_merged,
+            "total_hits": len(slug_merged),
+            "year_counts": counts,
+            "metrics": {"embed_ms": round(embed_ms, 1), "pinecone_ms": round(pinecone_ms, 1), "total_ms": round(total_ms, 1)},
+        }
+        by_newspaper[slug] = res_slug
+        newspaper_counts[slug] = len(slug_merged)
+
+    all_merged.sort(key=sort_key)
+
+    empty_res = {"by_year": {yr: [] for yr in namespaces}, "merged": [], "total_hits": 0, "year_counts": {yr: 0 for yr in namespaces}}
 
     out = {
-        "la": res_la,
-        "ny": res_ny,
+        "la": by_newspaper.get("los_angeles_herald", empty_res),
+        "ny": by_newspaper.get("the_evening_world", empty_res),
+        "by_newspaper": by_newspaper,
+        "newspaper_counts": newspaper_counts,
+        "all_merged": all_merged,
+        "total_hits": len(all_merged),
         "metrics": {
             "embed_ms": round(embed_ms, 1),
             "pinecone_ms": round(pinecone_ms, 1),
@@ -503,10 +588,10 @@ def search_calendar_date(
     month: int,
     day: int,
     namespaces: Optional[List[str]] = None,
-    front_page_only: bool = True,
+    front_page_only: bool = False,
     state: Optional[str] = None,
     newspaper_slug: Optional[str] = None,
-    top_k_per_year: int = 4,
+    top_k_per_year: int = 8,
 ) -> Dict[str, Any]:
     """Query year namespaces for newspaper issues published on a specific calendar month and day.
 

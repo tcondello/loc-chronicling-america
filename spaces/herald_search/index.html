@@ -1,0 +1,2456 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Historical Broadsheet Search (1890–1910)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Modern Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --bg-base: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-elevated: #f1f5f9;
+      --bg-input: #ffffff;
+      --border-subtle: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --text-faint: #94a3b8;
+      --accent-primary: #0284c7;
+      --accent-hover: #0369a1;
+      --accent-glow: rgba(2, 132, 199, 0.25);
+      --newsprint-bg: #fdfcf9;
+      --newsprint-border: #f3eee6;
+      --newsprint-text: #27272a;
+      --card-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.06);
+      --card-hover-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.12);
+      --track-bg: #f1f5f9;
+      --pill-bg: #e2e8f0;
+      --pill-text: #334155;
+    }
+
+    [data-theme="dark"] {
+      --bg-base: #0b0f17;
+      --bg-surface: #111827;
+      --bg-elevated: #1e293b;
+      --bg-input: #0f172a;
+      --border-subtle: #243042;
+      --border-strong: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-faint: #64748b;
+      --accent-primary: #38bdf8;
+      --accent-hover: #0284c7;
+      --accent-glow: rgba(56, 189, 248, 0.3);
+      --newsprint-bg: #0c1322;
+      --newsprint-border: #1e293b;
+      --newsprint-text: #e2e8f0;
+      --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+      --card-hover-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.7);
+      --track-bg: #151f30;
+      --pill-bg: #1e293b;
+      --pill-text: #cbd5e1;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* ── Layout Container ─────────────────────────────────────────────── */
+    .container {
+      width: 100%;
+      max-width: 1420px;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 3rem 1.5rem;
+    }
+
+    /* ── Header & Masthead ────────────────────────────────────────────── */
+    header.app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .header-brand h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 1.65rem;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-brand p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+    .header-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.73rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+    }
+    .theme-toggle-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+
+    /* ── Tab Navigation ───────────────────────────────────────────────── */
+    nav.tab-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 0.5rem;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+      padding: 0.55rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: var(--bg-elevated);
+    }
+    .tab-btn.active {
+      color: #ffffff;
+      background: var(--accent-primary);
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    /* ── Tab Panes ────────────────────────────────────────────────────── */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ── Search Input Box ─────────────────────────────────────────────── */
+    .search-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      align-items: stretch;
+    }
+    .search-input-wrap {
+      flex: 1;
+      position: relative;
+    }
+    .search-textarea {
+      width: 100%;
+      height: 68px;
+      padding: 0.75rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.93rem;
+      line-height: 1.5;
+      background: var(--bg-input);
+      color: var(--text-main);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      outline: none;
+      resize: vertical;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .search-textarea:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .search-btn {
+      min-width: 165px;
+      background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+      color: #ffffff;
+      border: 1px solid #38bdf8;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+      transition: all 0.15s ease;
+    }
+    .search-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+    }
+    .search-btn:active {
+      transform: translateY(0);
+    }
+
+    /* ── Dual-Path Query Console for Story Mode ──────────────────────── */
+    .dual-query-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 0.85rem;
+    }
+    @media (max-width: 900px) {
+      .dual-query-grid { grid-template-columns: 1fr; }
+    }
+    .query-path-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .query-path-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--accent-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .hybrid-badge {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-primary);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      font-weight: 600;
+      align-self: center;
+    }
+
+    /* ── Modern Filter Hub Command Deck ───────────────────────────────── */
+    .filter-hub {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1.15rem 1.35rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    .syntax-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .syntax-title {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 0.25rem;
+    }
+    .syntax-chip {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .syntax-chip:hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+    .syntax-chip.clear-chip {
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .syntax-chip.clear-chip:hover {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    .deck-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 0.85rem;
+    }
+    @media (max-width: 980px) {
+      .deck-grid { grid-template-columns: 1fr; }
+    }
+    .deck-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .deck-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .deck-label {
+      font-size: 0.73rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .deck-hint {
+      font-size: 0.7rem;
+      color: var(--text-faint);
+    }
+
+    /* Segmented Controls & Multi-Select Pills */
+    .seg-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      background: var(--track-bg);
+      padding: 4px;
+      border-radius: 8px;
+      gap: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+    .seg-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--pill-text);
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.35rem 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.12s ease;
+    }
+    .seg-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text-main);
+    }
+    .seg-btn.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      font-weight: 700;
+      border-color: var(--accent-primary);
+      box-shadow: 0 2px 6px var(--accent-glow);
+    }
+
+    /* Multi-Select Broadsheet Pills (Up to 3) */
+    .broadsheet-selector-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .broadsheet-pill-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .broadsheet-toggle-pill {
+      border: 1px solid var(--border-strong);
+      background: var(--bg-elevated);
+      color: var(--pill-text);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.28rem 0.7rem;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+    .broadsheet-toggle-pill:hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+    .broadsheet-toggle-pill.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+    .broadsheet-toggle-pill .check-indicator {
+      font-size: 0.72rem;
+      font-weight: 900;
+    }
+    .cap-badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      background: var(--bg-elevated);
+      color: var(--accent-primary);
+      border: 1px solid var(--border-subtle);
+      font-weight: 700;
+    }
+
+    /* Timeline Rail */
+    .timeline-rail {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      background: var(--track-bg);
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+    }
+    .year-btn {
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      color: var(--pill-text);
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 0.28rem 0.6rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .year-btn:hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+    }
+    .year-btn.active {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+      box-shadow: 0 2px 6px var(--accent-glow);
+    }
+    .era-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--text-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 0 2px;
+    }
+
+    /* Presets Rail */
+    .presets-wrap {
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .preset-rail {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: 0.4rem;
+    }
+    .preset-pill {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--pill-text);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .preset-pill:hover {
+      background: var(--accent-glow);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+
+    /* ── Latency HUD ──────────────────────────────────────────────────── */
+    .latency-hud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 0.75rem 1.15rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      border-left: 4px solid #38bdf8;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .hud-title {
+      color: #38bdf8;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+    }
+    .hud-pill {
+      background: #1e293b;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      color: #f1f5f9;
+    }
+    .cache-hit-pill {
+      background: #065f46 !important;
+      color: #6ee7b7 !important;
+      font-weight: 700;
+      border: 1px solid #10b981;
+    }
+
+    /* ── Chronological Density Histogram ──────────────────────────────── */
+    .density-bar-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.85rem 1.15rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--card-shadow);
+    }
+    .density-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .density-title {
+      font-weight: 700;
+      font-size: 0.88rem;
+      color: var(--text-main);
+    }
+    .density-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+    }
+    .density-chart {
+      display: flex;
+      gap: 0.35rem;
+      align-items: flex-end;
+      justify-content: space-between;
+      overflow-x: auto;
+      padding: 0.25rem 0;
+    }
+    .density-col {
+      flex: 1;
+      min-width: 44px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .density-bars-box {
+      display: flex;
+      gap: 2px;
+      align-items: flex-end;
+      height: 50px;
+      width: 100%;
+      justify-content: center;
+      padding: 0 2px;
+    }
+
+    /* ── Multi-Column Comparative Split Grid (1, 2, or 3 Columns) ────── */
+    .comparison-grid-1 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+    .comparison-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 960px) {
+      .comparison-grid-2 { grid-template-columns: 1fr; }
+    }
+    .comparison-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1.25rem;
+    }
+    @media (max-width: 1100px) {
+      .comparison-grid-3 { grid-template-columns: 1fr; }
+    }
+    .split-col-header {
+      padding: 0.65rem 0.95rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid;
+    }
+
+    /* Authentic Newsprint Card */
+    .news-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1.15rem 1.25rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--card-shadow);
+      transition: box-shadow 0.2s ease, transform 0.15s ease;
+    }
+    .news-card:hover {
+      box-shadow: var(--card-hover-shadow);
+      transform: translateY(-1px);
+    }
+    .news-masthead {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+      margin-bottom: 0.6rem;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 0.5rem;
+    }
+    .pub-badge {
+      padding: 0.2rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .card-date {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+    .card-tag {
+      background: var(--track-bg);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.73rem;
+      font-weight: 500;
+      border: 1px solid var(--border-subtle);
+    }
+    .card-score {
+      background: rgba(56, 189, 248, 0.12);
+      color: #38bdf8;
+      padding: 0.18rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .card-subloc {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: -0.3rem;
+      margin-bottom: 0.75rem;
+    }
+    .card-content-split {
+      display: flex;
+      gap: 1.1rem;
+      align-items: flex-start;
+    }
+    .reading-col { flex: 3; min-width: 0; }
+    .thumb-col {
+      flex: 1;
+      min-width: 130px;
+      max-width: 175px;
+      text-align: center;
+    }
+    .article-reading-box {
+      background: var(--newsprint-bg);
+      border: 1px solid var(--newsprint-border);
+      border-radius: 6px;
+      padding: 1.05rem 1.15rem;
+      font-family: 'Newsreader', Georgia, serif;
+      font-size: 0.98rem;
+      line-height: 1.72;
+      color: var(--newsprint-text);
+      max-height: 280px;
+      overflow-y: auto;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.03);
+    }
+    mark.hl {
+      background-color: #fef08a;
+      color: #18181b;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+      font-weight: 600;
+      border-bottom: 2px solid #ca8a04;
+    }
+    [data-theme="dark"] mark.hl {
+      background-color: #854d0e;
+      color: #fef08a;
+      border-bottom-color: #eab308;
+    }
+    .ocr-drawer {
+      margin-top: 0.75rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .ocr-summary {
+      padding: 0.45rem 0.8rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      background: var(--track-bg);
+      display: flex;
+      justify-content: space-between;
+      user-select: none;
+    }
+    .ocr-drawer-content {
+      padding: 0.75rem;
+      max-height: 220px;
+      overflow-y: auto;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+    }
+    .ocr-pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: var(--text-main);
+    }
+    .folio-img {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      cursor: zoom-in;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .folio-img:hover {
+      transform: scale(1.03);
+      box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+    }
+    .news-links-bar {
+      margin-top: 0.65rem;
+      font-size: 0.82rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.85rem;
+    }
+    .news-link {
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .news-link:hover { text-decoration: underline; }
+
+    /* ── Story Mode Components ────────────────────────────────────────── */
+    .chapter-strip {
+      display: flex;
+      gap: 0.65rem;
+      overflow-x: auto;
+      padding: 0.3rem 0 0.8rem 0;
+      margin-bottom: 1rem;
+    }
+    .chapter-card {
+      flex: 0 0 175px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.65rem 0.8rem;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .chapter-card:hover {
+      border-color: var(--accent-primary);
+      transform: translateY(-2px);
+    }
+    .chapter-card.active {
+      background: var(--bg-elevated);
+      border-color: var(--accent-primary);
+      border-left: 4px solid var(--accent-primary);
+      box-shadow: var(--card-shadow);
+    }
+    .ch-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--accent-primary);
+      text-transform: uppercase;
+    }
+    .ch-title {
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: var(--text-main);
+      line-height: 1.25;
+    }
+    .ch-meta {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+    }
+    .chapter-banner {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: var(--card-shadow);
+    }
+
+    /* ── Interactive Historical Calendar Component ───────────────────── */
+    .calendar-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--card-shadow);
+    }
+    .cal-header-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding-bottom: 1rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .cal-month-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .cal-nav-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cal-nav-btn:hover {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+    .cal-month-display {
+      font-family: 'Cinzel', serif;
+      font-size: 1.35rem;
+      font-weight: 900;
+      color: var(--text-main);
+      min-width: 180px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .cal-controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .cal-select {
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      padding: 0.45rem 0.8rem;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .cal-select:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* 7-Column Calendar Table Grid */
+    .calendar-table-wrap {
+      background: var(--bg-base);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.02);
+    }
+    .calendar-weekdays-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: center;
+      font-size: 0.74rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.6rem 0;
+    }
+    .calendar-days-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background: var(--border-subtle);
+    }
+    .cal-day-cell {
+      background: var(--bg-surface);
+      min-height: 86px;
+      padding: 0.5rem 0.55rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+    .cal-day-cell:hover {
+      background: var(--bg-elevated);
+    }
+    .cal-day-cell.other-month {
+      background: var(--bg-base);
+      opacity: 0.35;
+      cursor: default;
+    }
+    .cal-day-cell.has-issues {
+      background: rgba(2, 132, 199, 0.05);
+      border-top: 3px solid var(--accent-primary);
+    }
+    .cal-day-cell.has-issues:hover {
+      background: rgba(2, 132, 199, 0.12);
+    }
+    .cal-day-cell.selected-day {
+      background: rgba(2, 132, 199, 0.18) !important;
+      outline: 2px solid var(--accent-primary);
+      outline-offset: -2px;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+    .cal-day-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .cal-day-num {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .cal-day-cell.selected-day .cal-day-num {
+      color: var(--accent-primary);
+      font-weight: 900;
+    }
+    .cal-issue-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.18rem 0.4rem;
+      border-radius: 4px;
+      background: var(--accent-primary);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 3px;
+      margin-top: 0.3rem;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cal-issue-emojis {
+      font-size: 0.65rem;
+      letter-spacing: -1px;
+    }
+
+    /* Curated Historical Date Jumps */
+    .cal-quick-jumps {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .jump-chip {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-main);
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.15s ease;
+    }
+    .jump-chip:hover {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+      transform: translateY(-1px);
+    }
+    .jump-chip.active-chip {
+      background: var(--accent-primary);
+      color: #ffffff;
+      border-color: var(--accent-primary);
+    }
+
+    /* Selected Date Header */
+    .cal-date-banner {
+      background: var(--bg-surface);
+      border-left: 4px solid var(--accent-primary);
+      border-top: 1px solid var(--border-subtle);
+      border-right: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .cal-date-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .cal-date-meta {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 768px) {
+      .cal-day-cell { min-height: 60px; padding: 0.3rem; }
+      .cal-day-num { font-size: 0.82rem; }
+      .cal-issue-badge { font-size: 0.6rem; padding: 0.1rem 0.25rem; }
+      .cal-month-display { font-size: 1.1rem; min-width: 140px; }
+    }
+
+    /* ── Empty State & Loading Spinners ───────────────────────────────── */
+    .empty-state {
+      padding: 2.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      background: var(--track-bg);
+      border: 1px dashed var(--border-strong);
+      border-radius: 8px;
+      font-size: 0.95rem;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #ffffff;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Image Zoom Modal ─────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1.5rem;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-body {
+      max-width: 92vw;
+      max-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    .modal-img {
+      max-width: 100%;
+      max-height: 84vh;
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+    .modal-close-btn {
+      position: absolute;
+      top: -36px;
+      right: 0;
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-size: 1.5rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- ── App Masthead ─────────────────────────────────────────────── -->
+    <header class="app-header">
+      <div class="header-brand">
+        <h1><span>📰</span> Historical Broadsheet Search (1890–1910)</h1>
+        <p>Cross-Country Comparative Archive • Library of Congress Chronicling America &amp; Pinecone Documents API</p>
+        <div class="header-badges">
+          <span class="badge">📚 46,846 Articles Indexed</span>
+          <span class="badge">🌴 LA Herald</span>
+          <span class="badge">🌁 SF Call</span>
+          <span class="badge">🗽 Evening World</span>
+          <span class="badge">☀️ The Sun</span>
+          <span class="badge">🦅 Chicago Eagle</span>
+          <span class="badge">🌾 Beatrice Express</span>
+          <span class="badge">📅 9 Namespaces</span>
+        </div>
+      </div>
+      <button type="button" class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()">
+        <span id="themeIcon">☀️</span> <span id="themeLabel">Light Mode</span>
+      </button>
+    </header>
+
+    <!-- ── Navigation Tabs ──────────────────────────────────────────── -->
+    <nav class="tab-nav" role="tablist">
+      <button type="button" class="tab-btn active" data-tab="tab-story" onclick="switchTab('tab-story')">
+        <span>🏛️</span> Interactive Story Mode
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-workbench" onclick="switchTab('tab-workbench')">
+        <span>🔬</span> Archival Workbench
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-calendar" onclick="switchTab('tab-calendar')">
+        <span>📅</span> Explore by Date (Calendar)
+      </button>
+      <button type="button" class="tab-btn" data-tab="tab-guide" onclick="switchTab('tab-guide')">
+        <span>📖</span> Architecture &amp; Lucene Guide
+      </button>
+    </nav>
+
+    <!-- ─────────────────────────────────────────────────────────────────
+         TAB 1: INTERACTIVE STORY MODE (FOCUS TAB)
+    ────────────────────────────────────────────────────────────────── -->
+    <div id="tab-story" class="tab-pane active">
+      <!-- Chapter Carousel Strip -->
+      <div style="font-size:0.78rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.35rem; letter-spacing:0.04em;">
+        🏛️ Chronological Story Chapters (Click to explore historical narrative):
+      </div>
+      <div class="chapter-strip" id="storyChapterStrip"></div>
+
+      <!-- Story Narrative Banner -->
+      <div id="storyBanner" class="chapter-banner"></div>
+
+      <!-- Dual-Path Hybrid Search Console -->
+      <div class="filter-hub" style="margin-bottom:1.25rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; border-bottom:1px solid var(--border-subtle); padding-bottom:0.5rem;">
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span class="deck-label" style="font-size:0.8rem; color:var(--text-main);">🔀 Dual-Path Hybrid Query Console</span>
+            <span class="hybrid-badge">Dense Semantic Cosine + Lucene Lexical RRF</span>
+          </div>
+          <span class="deck-hint">Both paths are searched concurrently and fused via Reciprocal Rank Fusion</span>
+        </div>
+
+        <div class="dual-query-grid">
+          <!-- Path 1: Semantic Query -->
+          <div class="query-path-box">
+            <div class="query-path-label">
+              <span>🧠 Path 1: Semantic Concept Query (Natural Language)</span>
+              <span class="deck-hint">Dense Vectors</span>
+            </div>
+            <textarea id="storySemanticInput" class="search-textarea" placeholder="Describe the conceptual historical narrative in natural language..."></textarea>
+          </div>
+
+          <!-- Path 2: Full-Text Query -->
+          <div class="query-path-box">
+            <div class="query-path-label">
+              <span>⚡ Path 2: Full-Text Keyword Query (FTS / BM25)</span>
+              <span class="deck-hint">Exact Keywords &amp; Operators</span>
+            </div>
+            <textarea id="storyFullTextInput" class="search-textarea" placeholder="Keywords, exact phrases (+ / - / quotes / boolean logic)..."></textarea>
+          </div>
+        </div>
+
+        <!-- Broadsheet Selection Bar (Up to 3) & Execute Button -->
+        <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:0.75rem; margin-top:0.65rem; border-top:1px solid var(--border-subtle); padding-top:0.75rem;">
+          <div class="broadsheet-selector-box">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <span class="deck-label">📰 Compare Broadsheets:</span>
+              <span id="storyCapBadge" class="cap-badge">Selected: 3 of 3 max</span>
+            </div>
+            <div class="broadsheet-pill-grid" id="storyBroadsheetPills">
+              <!-- Broadsheet toggle buttons for Story Mode -->
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <button type="button" class="search-btn" id="storySearchBtn" onclick="executeStoryQuery()">
+              <span id="storySearchBtnText">⚡ Execute Hybrid Story Search</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Story Latency HUD & Density Bar -->
+      <div id="storyLatencyHud" style="display:none;"></div>
+      <div id="storyDensityBar" style="display:none;"></div>
+
+      <!-- Story Multi-Column Comparative Split -->
+      <div id="storySplitArea">
+        <div class="empty-state">Select a story chapter above or customize the dual-path hybrid queries to compare historical broadsheets.</div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────
+         TAB 2: ARCHIVAL RESEARCH WORKBENCH
+    ────────────────────────────────────────────────────────────────── -->
+    <div id="tab-workbench" class="tab-pane">
+      <!-- Search Input Box -->
+      <div class="search-row">
+        <div class="search-input-wrap">
+          <textarea id="wbQueryInput" class="search-textarea" placeholder="Search query expression (supports boolean logic, phrases, fuzzy, boosts)...">+"San Francisco" +(earthquake OR catastrophe OR fire OR ruins) -patent -remedy</textarea>
+        </div>
+        <button type="button" class="search-btn" id="wbSearchBtn" onclick="executeWorkbenchSearch()">
+          <span id="wbSearchBtnText">⚡ Search Archive</span>
+        </button>
+      </div>
+
+      <!-- Filter Hub Command Deck -->
+      <div class="filter-hub">
+        <!-- Syntax Assistant Bar -->
+        <div class="syntax-bar">
+          <span class="syntax-title">🛠️ Lucene Operators:</span>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('+')">+must</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('-')">-exclude</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('&quot;&quot;', 1)">&quot;exact phrase&quot;</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('&quot;&quot;~4', 3)">&quot;phrase&quot;~4 slop</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('~1')">term~1 fuzzy</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('^2')">term^2 boost</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax('/pattern.*/')">/regex/</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax(' AND ')">AND</button>
+          <button type="button" class="syntax-chip" onclick="insertSyntax(' OR ')">OR</button>
+          <button type="button" class="syntax-chip clear-chip" onclick="clearQuery()">Clear ✕</button>
+        </div>
+
+        <!-- Two-Column Primary Deck -->
+        <div class="deck-grid">
+          <!-- Col Left: Multi-Broadsheet Comparison (Up to 3) -->
+          <div class="deck-col">
+            <div class="deck-label-row">
+              <span class="deck-label">📰 Compare Broadsheets</span>
+              <span id="wbCapBadge" class="cap-badge">Selected: 2 of 3 max</span>
+            </div>
+            <!-- Broadsheet toggle pills -->
+            <div class="broadsheet-pill-grid" id="wbBroadsheetPills">
+              <!-- Dynamic Broadsheet Toggles -->
+            </div>
+            <!-- Quick comparison presets -->
+            <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:0.35rem;">
+              <span class="era-label" style="align-self:center;">Quick Presets:</span>
+              <button type="button" class="syntax-chip" onclick="setWorkbenchPresetBroadsheets(['los_angeles_herald', 'the_evening_world'])">⚖️ Coast-to-Coast</button>
+              <button type="button" class="syntax-chip" onclick="setWorkbenchPresetBroadsheets(['los_angeles_herald', 'the_san_francisco_call'])">🌁 West Coast</button>
+              <button type="button" class="syntax-chip" onclick="setWorkbenchPresetBroadsheets(['the_evening_world', 'the_sun'])">🗽 East Coast</button>
+              <button type="button" class="syntax-chip" onclick="setWorkbenchPresetBroadsheets(['chicago_eagle', 'the_beatrice_daily_express'])">🦅 Midwest</button>
+              <button type="button" class="syntax-chip" onclick="setWorkbenchPresetBroadsheets(['los_angeles_herald', 'the_san_francisco_call', 'the_evening_world'])">🏛️ Tri-Metropolis</button>
+            </div>
+          </div>
+
+          <!-- Col Right: Mode & Options (Front page filter removed!) -->
+          <div class="deck-col">
+            <div class="deck-label-row">
+              <span class="deck-label">🎯 Ranking Engine &amp; Depth</span>
+              <span class="deck-hint">Pinecone Integrated Index</span>
+            </div>
+            <div class="seg-group" id="modeGroup">
+              <button type="button" class="seg-btn active" data-mode="Query string (Lucene)">⚡ Lucene FTS</button>
+              <button type="button" class="seg-btn" data-mode="Hybrid">🔀 Hybrid</button>
+              <button type="button" class="seg-btn" data-mode="Full-text (BM25)">🌲 BM25</button>
+              <button type="button" class="seg-btn" data-mode="Semantic">🧠 Semantic</button>
+            </div>
+            <div class="seg-group" style="margin-top:0.35rem;">
+              <span class="era-label" style="align-self:center; margin:0 4px;">Results Depth per Year:</span>
+              <button type="button" class="seg-btn active" data-topk="4" onclick="setTopK(4, this)">4</button>
+              <button type="button" class="seg-btn" data-topk="8" onclick="setTopK(8, this)">8</button>
+              <button type="button" class="seg-btn" data-topk="12" onclick="setTopK(12, this)">12</button>
+              <button type="button" class="seg-btn" data-topk="16" onclick="setTopK(16, this)">16</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Full-Width Timeline Rail -->
+        <div style="margin-bottom:0.75rem;">
+          <div class="deck-label-row" style="margin-bottom:4px;">
+            <span class="deck-label">📅 Historical Timeline &amp; Season Window</span>
+            <span class="deck-hint">46,846 Articles across 9 Namespaces</span>
+          </div>
+          <div class="timeline-rail" id="yearRail">
+            <button type="button" class="year-btn active" data-year="All" onclick="setYear('All', this)">All 9 Years (1890–1910)</button>
+            <span class="era-label" style="margin-left:6px;">Gilded:</span>
+            <button type="button" class="year-btn" data-year="1890" onclick="setYear('1890', this)">1890</button>
+            <button type="button" class="year-btn" data-year="1891" onclick="setYear('1891', this)">1891</button>
+            <button type="button" class="year-btn" data-year="1892" onclick="setYear('1892', this)">1892</button>
+            <span class="era-label" style="margin-left:6px;">Progressive:</span>
+            <button type="button" class="year-btn" data-year="1905" onclick="setYear('1905', this)">1905</button>
+            <button type="button" class="year-btn" data-year="1906" onclick="setYear('1906', this)">1906</button>
+            <button type="button" class="year-btn" data-year="1907" onclick="setYear('1907', this)">1907</button>
+            <button type="button" class="year-btn" data-year="1908" onclick="setYear('1908', this)">1908</button>
+            <button type="button" class="year-btn" data-year="1909" onclick="setYear('1909', this)">1909</button>
+            <button type="button" class="year-btn" data-year="1910" onclick="setYear('1910', this)">1910</button>
+            <span style="border-left:1px solid var(--border-strong); height:18px; margin:0 6px;"></span>
+            <span class="era-label">Season:</span>
+            <div class="seg-group" id="seasonGroup" style="padding:2px; background:transparent; border:none; gap:2px;">
+              <button type="button" class="seg-btn active" data-season="(any)" style="padding:0.2rem 0.5rem; font-size:0.75rem;">(Any)</button>
+              <button type="button" class="seg-btn" data-season="Winter" style="padding:0.2rem 0.5rem; font-size:0.75rem;">❄️ Winter</button>
+              <button type="button" class="seg-btn" data-season="Summer" style="padding:0.2rem 0.5rem; font-size:0.75rem;">☀️ Summer</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Curated 1-Click Presets -->
+        <div class="presets-wrap">
+          <div class="deck-label-row">
+            <span class="deck-label">🏛️ Curated Inquiries (1-Click Presets Across 6 Publications)</span>
+            <span class="deck-hint">Auto-configures query and executes comparison</span>
+          </div>
+          <div class="preset-rail" id="presetRail"></div>
+        </div>
+      </div>
+
+      <!-- Latency HUD Container -->
+      <div id="wbLatencyHud" style="display:none;"></div>
+
+      <!-- Density Histogram Container -->
+      <div id="wbDensityBar" style="display:none;"></div>
+
+      <!-- Results Container -->
+      <div id="wbResultsArea">
+        <div class="empty-state">
+          Enter a query or select a 1-click curated inquiry above to compare broadsheets across the archive.
+        </div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────
+         TAB 3: EXPLORE BY DATE (INTERACTIVE CALENDAR)
+    ────────────────────────────────────────────────────────────────── -->
+    <div id="tab-calendar" class="tab-pane">
+      <div class="calendar-card">
+        <!-- Calendar Nav & Controls Header -->
+        <div class="cal-header-bar">
+          <!-- Left: Month Nav Switcher -->
+          <div class="cal-month-nav">
+            <button type="button" class="cal-nav-btn" onclick="prevCalendarMonth()" title="Previous Month">◀</button>
+            <div class="cal-month-display" id="calMonthTitle">January</div>
+            <button type="button" class="cal-nav-btn" onclick="nextCalendarMonth()" title="Next Month">▶</button>
+          </div>
+
+          <!-- Right: Controls Row (All 12 Months, Year Filter, Broadsheet Filter) -->
+          <div class="cal-controls-row">
+            <!-- All 12 Months Dropdown -->
+            <div>
+              <select id="calMonthSelect" class="cal-select" onchange="onCalendarMonthChange(this.value)">
+                <option value="1">01 - January</option>
+                <option value="2">02 - February</option>
+                <option value="3">03 - March</option>
+                <option value="4">04 - April</option>
+                <option value="5">05 - May</option>
+                <option value="6">06 - June</option>
+                <option value="7">07 - July</option>
+                <option value="8">08 - August</option>
+                <option value="9">09 - September</option>
+                <option value="10">10 - October</option>
+                <option value="11">11 - November</option>
+                <option value="12">12 - December</option>
+              </select>
+            </div>
+
+            <!-- Year Scope Dropdown -->
+            <div>
+              <select id="calYearSelect" class="cal-select" onchange="onCalendarYearChange(this.value)">
+                <option value="All">All Years (1890–1910)</option>
+                <option value="1890">1890 (Gilded Age)</option>
+                <option value="1891">1891</option>
+                <option value="1892">1892</option>
+                <option value="1905">1905 (Progressive Era)</option>
+                <option value="1906">1906 (SF Earthquake)</option>
+                <option value="1907">1907 (Panic of 1907)</option>
+                <option value="1908">1908 (Model T)</option>
+                <option value="1909">1909</option>
+                <option value="1910">1910 (Aviation Meets)</option>
+              </select>
+            </div>
+
+            <!-- Broadsheet / Region Dropdown -->
+            <div>
+              <select id="calNewspaperSelect" class="cal-select" onchange="onCalendarNewspaperChange(this.value)">
+                <option value="all">All 6 Broadsheets (Nationwide)</option>
+                <option value="los_angeles_herald">🌴 Los Angeles Herald</option>
+                <option value="the_san_francisco_call">🌁 The San Francisco Call</option>
+                <option value="the_evening_world">🗽 The Evening World</option>
+                <option value="the_sun">☀️ The Sun</option>
+                <option value="chicago_eagle">🦅 Chicago Eagle</option>
+                <option value="the_beatrice_daily_express">🌾 The Beatrice Daily Express</option>
+              </select>
+            </div>
+
+            <button type="button" class="search-btn" style="min-width:130px; height:36px; font-size:0.86rem;" onclick="executeCalendarSearch()">
+              🔍 Search Date
+            </button>
+          </div>
+        </div>
+
+        <!-- 7-Column Interactive Calendar Month Grid -->
+        <div class="calendar-table-wrap">
+          <div class="calendar-weekdays-header">
+            <div>Sun</div>
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+          </div>
+          <div class="calendar-days-grid" id="calendarDaysGrid">
+            <!-- Dynamically populated 35 or 42 calendar day cells -->
+          </div>
+        </div>
+
+        <!-- Curated Historical Date Bookmarks -->
+        <div class="cal-quick-jumps">
+          <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-right:4px;">Historical Curated Dates:</span>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(1, 1)">🎆 New Year's Day (Jan 1 • 8 Yrs)</button>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(1, 2)">📰 Gilded News Wire (Jan 2 • 8 Yrs)</button>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(7, 1)">☀️ Mid-Summer Boom (Jul 1 • 4 Yrs)</button>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(7, 2)">🌁 Post-Earthquake Dispatches (Jul 2 • 5 Yrs)</button>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(9, 17)">🦅 Railroad &amp; Labor Striking (Sep 17, 1892)</button>
+          <button type="button" class="jump-chip" onclick="jumpToCalendarDate(12, 1)">❄️ Turn-of-the-Century Winter (Dec 1 • 3 Yrs)</button>
+        </div>
+      </div>
+
+      <!-- Active Selected Date Banner & Latency HUD -->
+      <div id="calDateBanner" class="cal-date-banner">
+        <div>
+          <div class="cal-date-title" id="calActiveDateTitle">📅 Selected Date: January 01</div>
+          <div class="cal-date-meta" id="calActiveDateMeta">Explore digitized broadsheets published on this exact calendar day across 1890–1910</div>
+        </div>
+        <div id="calActiveDateBadge"></div>
+      </div>
+
+      <div id="calLatencyHud" style="display:none; margin-bottom:1rem;"></div>
+
+      <!-- Results Gallery (Organized Chronologically by Year) -->
+      <div id="calGalleryArea">
+        <div class="empty-state">Select any calendar date above to explore historical issues published on that exact day across 1890–1910.</div>
+      </div>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────────────────
+         TAB 4: ARCHITECTURE & LUCENE GUIDE
+    ────────────────────────────────────────────────────────────────── -->
+    <div id="tab-guide" class="tab-pane">
+      <div class="news-card" style="padding:1.5rem 1.8rem;">
+        <h2 style="font-family:'Cinzel', serif; font-size:1.35rem; margin-bottom:0.75rem;">Pinecone query_string Grammar &amp; Operator Guide</h2>
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:0.88rem; text-align:left;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border-strong);">
+                <th style="padding:0.6rem 0.75rem;">Capability</th>
+                <th style="padding:0.6rem 0.75rem;">Syntax Example</th>
+                <th style="padding:0.6rem 0.75rem;">Archival Use Case &amp; Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Required Term</td><td style="padding:0.6rem 0.75rem;"><code>+aviation +pilot</code></td><td style="padding:0.6rem 0.75rem;">Ensures both terms MUST appear in the article chunk.</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Excluded Term</td><td style="padding:0.6rem 0.75rem;"><code>-patent -advertisement</code></td><td style="padding:0.6rem 0.75rem;">Strips late-Victorian commercial ads and patent medicine remedies.</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Exact Phrase</td><td style="padding:0.6rem 0.75rem;"><code>"San Francisco"</code></td><td style="padding:0.6rem 0.75rem;">Matches exact adjacent sequence of tokens in publication order.</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Phrase Slop</td><td style="padding:0.6rem 0.75rem;"><code>"aviation meet"~4</code></td><td style="padding:0.6rem 0.75rem;">Allows up to 4 words between terms; solves multi-column layout false negatives.</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Term Boosting</td><td style="padding:0.6rem 0.75rem;"><code>aeroplane^3 "flying machine"^2</code></td><td style="padding:0.6rem 0.75rem;">Multiplies term contribution to score (3x for aeroplane, 2x for flying machine).</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Fuzzy / Typo</td><td style="padding:0.6rem 0.75rem;"><code>Roosevclt~1, aeroplan~1</code></td><td style="padding:0.6rem 0.75rem;">Tolerates OCR noise &amp; microfilm ink-bleed within Levenshtein distance 1 or 2.</td></tr>
+              <tr style="border-bottom:1px solid var(--border-subtle);"><td style="padding:0.6rem 0.75rem; font-weight:700;">Regex Match</td><td style="padding:0.6rem 0.75rem;"><code>/aeronaut.*/</code></td><td style="padding:0.6rem 0.75rem;">Matches regular expression patterns on indexed tokens.</td></tr>
+              <tr><td style="padding:0.6rem 0.75rem; font-weight:700;">Boolean Logic</td><td style="padding:0.6rem 0.75rem;"><code>((a OR b) AND c NOT d)</code></td><td style="padding:0.6rem 0.75rem;">Explicit operator precedence grouping with parentheses.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="font-family:'Cinzel', serif; font-size:1.15rem; margin-top:1.5rem; margin-bottom:0.5rem;">Nationwide Dataset Architecture (46,846 Articles)</h3>
+        <p style="color:var(--text-muted); font-size:0.92rem; line-height:1.6;">
+          • <strong>Archival Broadsheets</strong>: 🌴 <em>Los Angeles Herald</em> (8,634 chunks) • 🌁 <em>The San Francisco Call</em> (9,939 chunks) • 🗽 <em>The Evening World</em> (7,829 chunks) • ☀️ <em>The Sun</em> (16,205 chunks) • 🦅 <em>Chicago Eagle</em> (2,439 chunks) • 🌾 <em>The Beatrice Daily Express</em> (1,800 chunks)<br>
+          • <strong>Pinecone Namespaces</strong>: Partitioned across 9 year namespaces (1890, 1891, 1892, 1905, 1906, 1907, 1908, 1909, 1910)<br>
+          • <strong>Embedding Model</strong>: OpenAI <code>text-embedding-3-small</code> (1,536 dimensions)<br>
+          • <strong>Dynamic Visual CDN</strong>: High-resolution Library of Congress IIIF Image API (<code>tile.loc.gov</code>)
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Image Zoom Modal ─────────────────────────────────────────────── -->
+  <div id="imageModal" class="modal-overlay" onclick="closeImageModal(event)">
+    <div class="modal-body">
+      <button type="button" class="modal-close-btn" onclick="closeImageModal()">✕</button>
+      <img id="modalImg" src="" alt="High Resolution Scan" class="modal-img" />
+      <div id="modalCaption" style="color:#ffffff; font-size:0.85rem; margin-top:0.5rem; text-align:center;"></div>
+    </div>
+  </div>
+
+  <!-- ── Client Application Logic ──────────────────────────────────────── -->
+  <script>
+    // State Store
+    const state = {
+      theme: 'dark',
+      activeTab: 'tab-story', // Focused on Story Mode first
+      // Workbench Broadhseets (Up to 3)
+      wbNewspapers: ['los_angeles_herald', 'the_evening_world'],
+      mode: 'Query string (Lucene)',
+      year: 'All',
+      season: '(any)',
+      topK: 4,
+      // Story Mode State
+      currentStoryChapterIdx: 0,
+      storyNewspapers: ['los_angeles_herald', 'the_evening_world', 'the_san_francisco_call'],
+      config: null,
+      // Calendar State
+      calMonth: 1,
+      calDay: 1,
+      calYear: 'All',
+      calNewspaper: 'all',
+      calendarManifest: {},
+    };
+
+    const ALL_NEWSPAPERS_LIST = [
+      { slug: 'los_angeles_herald', title: '🌴 LA Herald', fullTitle: 'Los Angeles Herald', accent: '#d97706' },
+      { slug: 'the_san_francisco_call', title: '🌁 SF Call', fullTitle: 'The San Francisco Call', accent: '#0d9488' },
+      { slug: 'the_evening_world', title: '🗽 Evening World', fullTitle: 'The Evening World', accent: '#0284c7' },
+      { slug: 'the_sun', title: '☀️ The Sun', fullTitle: 'The Sun', accent: '#ca8a04' },
+      { slug: 'chicago_eagle', title: '🦅 Chicago Eagle', fullTitle: 'Chicago Eagle', accent: '#7c3aed' },
+      { slug: 'the_beatrice_daily_express', title: '🌾 Beatrice Express', fullTitle: 'The Beatrice Daily Express', accent: '#16a34a' },
+    ];
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 1. Theme
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      setTheme(savedTheme);
+
+      // 2. Initialize Calendar Grid
+      renderCalendarGrid(state.calMonth, state.calYear);
+
+      // 3. Render Broadsheet Multi-Select Pill Controls for Story & Workbench
+      renderBroadsheetSelector('storyBroadsheetPills', state.storyNewspapers, onStoryBroadsheetToggle);
+      renderBroadsheetSelector('wbBroadsheetPills', state.wbNewspapers, onWorkbenchBroadsheetToggle);
+
+      // 4. Mode Buttons
+      document.querySelectorAll('#modeGroup .seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#modeGroup .seg-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          state.mode = btn.getAttribute('data-mode');
+        });
+      });
+
+      // 5. Season Buttons
+      document.querySelectorAll('#seasonGroup .seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#seasonGroup .seg-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          state.season = btn.getAttribute('data-season');
+        });
+      });
+
+      // 6. Enter key in Workbench query box
+      document.getElementById('wbQueryInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+          executeWorkbenchSearch();
+        }
+      });
+
+      // 7. Load Configuration and Chapters
+      await loadAppConfig();
+
+      // 8. Auto-load Chapter 0
+      loadStoryChapter(0);
+    });
+
+    // Theme Management
+    function toggleTheme() {
+      const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
+      setTheme(nextTheme);
+    }
+
+    function setTheme(t) {
+      state.theme = t;
+      document.documentElement.setAttribute('data-theme', t);
+      localStorage.setItem('theme', t);
+      const icon = document.getElementById('themeIcon');
+      const label = document.getElementById('themeLabel');
+      if (t === 'dark') {
+        icon.textContent = '☀️';
+        label.textContent = 'Light Mode';
+      } else {
+        icon.textContent = '🌙';
+        label.textContent = 'Dark Mode';
+      }
+    }
+
+    // Tab Switching
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.tab-nav .tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+      });
+      document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === tabId);
+      });
+    }
+
+    // Broadsheet Multi-Select Helpers (Up to 3)
+    function renderBroadsheetSelector(containerId, activeList, toggleCallback) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+
+      ALL_NEWSPAPERS_LIST.forEach(item => {
+        const isSelected = activeList.includes(item.slug);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `broadsheet-toggle-pill ${isSelected ? 'active' : ''}`;
+        btn.innerHTML = `
+          <span>${item.title}</span>
+          <span class="check-indicator">${isSelected ? '✓' : '+'}</span>
+        `;
+        btn.onclick = () => toggleCallback(item.slug);
+        container.appendChild(btn);
+      });
+    }
+
+    function onStoryBroadsheetToggle(slug) {
+      const idx = state.storyNewspapers.indexOf(slug);
+      if (idx >= 0) {
+        if (state.storyNewspapers.length === 1) {
+          alert('At least 1 newspaper must be selected for comparison.');
+          return;
+        }
+        state.storyNewspapers.splice(idx, 1);
+      } else {
+        if (state.storyNewspapers.length >= 3) {
+          alert('Maximum 3 newspapers can be selected for comparison to keep the view clean.');
+          return;
+        }
+        state.storyNewspapers.push(slug);
+      }
+      document.getElementById('storyCapBadge').textContent = `Selected: ${state.storyNewspapers.length} of 3 max`;
+      renderBroadsheetSelector('storyBroadsheetPills', state.storyNewspapers, onStoryBroadsheetToggle);
+      executeStoryQuery();
+    }
+
+    function onWorkbenchBroadsheetToggle(slug) {
+      const idx = state.wbNewspapers.indexOf(slug);
+      if (idx >= 0) {
+        if (state.wbNewspapers.length === 1) {
+          alert('At least 1 newspaper must be selected.');
+          return;
+        }
+        state.wbNewspapers.splice(idx, 1);
+      } else {
+        if (state.wbNewspapers.length >= 3) {
+          alert('Maximum 3 newspapers can be selected for comparison.');
+          return;
+        }
+        state.wbNewspapers.push(slug);
+      }
+      document.getElementById('wbCapBadge').textContent = `Selected: ${state.wbNewspapers.length} of 3 max`;
+      renderBroadsheetSelector('wbBroadsheetPills', state.wbNewspapers, onWorkbenchBroadsheetToggle);
+    }
+
+    function setWorkbenchPresetBroadsheets(slugs) {
+      state.wbNewspapers = slugs.slice(0, 3);
+      document.getElementById('wbCapBadge').textContent = `Selected: ${state.wbNewspapers.length} of 3 max`;
+      renderBroadsheetSelector('wbBroadsheetPills', state.wbNewspapers, onWorkbenchBroadsheetToggle);
+    }
+
+    // Lucene Operator Insertion
+    function insertSyntax(token, cursorOffset) {
+      const el = document.getElementById('wbQueryInput');
+      if (!el) return;
+      const start = el.selectionStart || el.value.length;
+      const end = el.selectionEnd || el.value.length;
+      const val = el.value;
+      el.value = val.substring(0, start) + token + val.substring(end);
+      const newPos = start + (cursorOffset !== undefined ? cursorOffset : token.length);
+      el.focus();
+      el.setSelectionRange(newPos, newPos);
+    }
+
+    function clearQuery() {
+      const el = document.getElementById('wbQueryInput');
+      if (el) {
+        el.value = '';
+        el.focus();
+      }
+    }
+
+    function setTopK(val, btn) {
+      state.topK = val;
+      btn.parentElement.querySelectorAll('[data-topk]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function setYear(yr, btn) {
+      state.year = yr;
+      document.querySelectorAll('#yearRail .year-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    // Load App Configuration
+    async function loadAppConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const data = await res.json();
+        state.config = data;
+
+        // Populate Presets in Workbench
+        const presetRail = document.getElementById('presetRail');
+        presetRail.innerHTML = '';
+        data.presets.forEach((p, idx) => {
+          const pill = document.createElement('button');
+          pill.type = 'button';
+          pill.className = 'preset-pill';
+          pill.innerHTML = p.title.split(':')[0];
+          pill.onclick = () => loadPreset(idx);
+          presetRail.appendChild(pill);
+        });
+
+        // Populate Story Chapters in Story Mode
+        const chapterStrip = document.getElementById('storyChapterStrip');
+        chapterStrip.innerHTML = '';
+        data.chapters.forEach((c, idx) => {
+          const card = document.createElement('div');
+          card.className = `chapter-card ${idx === 0 ? 'active' : ''}`;
+          card.innerHTML = `
+            <span class="ch-badge">Ch. ${c.number} • ${c.period}</span>
+            <span class="ch-title">${c.title.split(':')[0]}</span>
+            <span class="ch-meta">${c.badge}</span>
+          `;
+          card.onclick = () => loadStoryChapter(idx);
+          chapterStrip.appendChild(card);
+        });
+
+        // Populate Calendar Manifest & Re-render Grid
+        state.calendarManifest = data.calendar_manifest || {};
+        renderCalendarGrid(state.calMonth, state.calYear);
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      }
+    }
+
+    // Story Mode: Select Chapter
+    async function loadStoryChapter(idx) {
+      state.currentStoryChapterIdx = idx;
+      document.querySelectorAll('#storyChapterStrip .chapter-card').forEach((card, i) => {
+        card.classList.toggle('active', i === idx);
+      });
+
+      if (!state.config || !state.config.chapters[idx]) return;
+      const c = state.config.chapters[idx];
+
+      // Populate Dual-Path Query Inputs
+      document.getElementById('storySemanticInput').value = c.semantic_query || '';
+      document.getElementById('storyFullTextInput').value = c.query || '';
+
+      // Default up to 3 newspapers for this chapter
+      if (c.default_newspapers && c.default_newspapers.length > 0) {
+        state.storyNewspapers = c.default_newspapers.slice(0, 3);
+        document.getElementById('storyCapBadge').textContent = `Selected: ${state.storyNewspapers.length} of 3 max`;
+        renderBroadsheetSelector('storyBroadsheetPills', state.storyNewspapers, onStoryBroadsheetToggle);
+      }
+
+      // Render Narrative Banner
+      const figuresPills = (c.figures || []).map(fig => `
+        <span class="badge" style="background:var(--track-bg); color:var(--text-main);">${escapeHtml(fig)}</span>
+      `).join(' ');
+
+      document.getElementById('storyBanner').innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
+          <div>
+            <span style="background:var(--accent-primary); color:#ffffff; padding:0.25rem 0.65rem; border-radius:9999px; font-size:0.78rem; font-weight:700; text-transform:uppercase;">Chapter ${c.number} of ${state.config.chapters ? state.config.chapters.length : 5}</span>
+            <span class="badge" style="margin-left:0.4rem;">${c.badge}</span>
+          </div>
+          <div style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">Historical Period: <strong style="color:var(--text-main);">${c.period}</strong></div>
+        </div>
+        <h2 style="font-family:'Cinzel', serif; font-size:1.45rem; color:var(--text-main); margin-bottom:0.25rem;">${c.title}</h2>
+        <div style="font-size:0.95rem; color:var(--text-muted); font-style:italic; margin-bottom:0.85rem;">${c.subtitle}</div>
+        <p style="font-family:'Newsreader', serif; font-size:1rem; line-height:1.65; color:var(--text-main); margin-bottom:1rem;">${c.narrative}</p>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:0.85rem; margin-bottom:0.85rem;">
+          <div style="background:rgba(245,158,11,0.1); border-left:4px solid #f59e0b; padding:0.7rem 0.9rem; border-radius:4px; font-size:0.84rem; color:var(--text-main); line-height:1.5;">${c.west_angle}</div>
+          <div style="background:rgba(2,132,199,0.1); border-left:4px solid #0284c7; padding:0.7rem 0.9rem; border-radius:4px; font-size:0.84rem; color:var(--text-main); line-height:1.5;">${c.east_angle}</div>
+          ${c.midwest_angle ? `<div style="background:rgba(16,185,129,0.1); border-left:4px solid #10b981; padding:0.7rem 0.9rem; border-radius:4px; font-size:0.84rem; color:var(--text-main); line-height:1.5;">${c.midwest_angle}</div>` : ''}
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; font-size:0.8rem;">
+          <strong style="color:var(--text-muted);">Key Figures &amp; Forces:</strong>
+          ${figuresPills}
+        </div>
+      `;
+
+      // Execute search automatically for chapter
+      await executeStoryQuery();
+    }
+
+    // Execute Story Mode Dual-Path Hybrid Search
+    async function executeStoryQuery() {
+      const semQuery = document.getElementById('storySemanticInput').value.trim();
+      const ftsQuery = document.getElementById('storyFullTextInput').value.trim();
+
+      const btnText = document.getElementById('storySearchBtnText');
+      btnText.innerHTML = '<span class="loading-spinner"></span> Fusing Hybrid Results...';
+
+      try {
+        const payload = {
+          chapter_idx: state.currentStoryChapterIdx,
+          semantic_query: semQuery,
+          fulltext_query: ftsQuery,
+          newspapers: state.storyNewspapers.slice(0, 3),
+          year_filter: 'All Years',
+          top_k: 4,
+        };
+
+        const res = await fetch('/api/story', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        // Render Latency HUD & Density Histogram
+        renderLatencyHud('storyLatencyHud', data.metrics, data.total_hits, data.newspaper_counts, 'Hybrid Dual-Path RRF');
+        renderDensityHistogram('storyDensityBar', data.year_np_counts);
+
+        // Render Multi-Column Comparison (up to 3 columns)
+        document.getElementById('storySplitArea').innerHTML = renderMultiColumnComparison(data.by_newspaper, data.target_slugs);
+      } catch (err) {
+        console.error('Story query error:', err);
+        document.getElementById('storySplitArea').innerHTML = `
+          <div class="empty-state" style="color:#ef4444;">Story query failed: ${err.message}</div>
+        `;
+      } finally {
+        btnText.innerHTML = '⚡ Execute Hybrid Story Search';
+      }
+    }
+
+    // Execute Workbench Search (Up to 3 Broadsheets)
+    async function executeWorkbenchSearch() {
+      const q = document.getElementById('wbQueryInput').value.trim();
+      if (!q) return;
+
+      const btnText = document.getElementById('wbSearchBtnText');
+      btnText.innerHTML = '<span class="loading-spinner"></span> Searching...';
+
+      try {
+        const payload = {
+          query: q,
+          newspapers: state.wbNewspapers.slice(0, 3),
+          mode: state.mode,
+          years: state.year,
+          season: state.season,
+          top_k: state.topK,
+        };
+
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        // Render Latency HUD & Density Histogram
+        renderLatencyHud('wbLatencyHud', data.metrics, data.total_hits, data.newspaper_counts, state.mode);
+        renderDensityHistogram('wbDensityBar', data.year_np_counts);
+
+        // Render Multi-Column Comparison or Single Grid
+        if (data.is_comparative && data.by_newspaper) {
+          document.getElementById('wbResultsArea').innerHTML = renderMultiColumnComparison(data.by_newspaper, data.target_slugs);
+        } else if (data.by_newspaper && Object.keys(data.by_newspaper).length > 0) {
+          document.getElementById('wbResultsArea').innerHTML = renderMultiColumnComparison(data.by_newspaper, data.target_slugs);
+        } else {
+          document.getElementById('wbResultsArea').innerHTML = `
+            <div class="comparison-grid-1">
+              ${(data.hits || []).map(h => renderCardHtml(h)).join('') || `<div class="empty-state">No matching articles found.</div>`}
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Search failed:', err);
+        document.getElementById('wbResultsArea').innerHTML = `
+          <div class="empty-state" style="color:#ef4444;">Search request failed: ${err.message}</div>
+        `;
+      } finally {
+        btnText.innerHTML = '⚡ Search Archive';
+      }
+    }
+
+    // Render Multi-Column Comparative Split (1, 2, or 3 columns)
+    function renderMultiColumnComparison(byNewspaper, targetSlugs) {
+      if (!byNewspaper || !targetSlugs || targetSlugs.length === 0) {
+        return '<div class="empty-state">No matching articles found.</div>';
+      }
+
+      const colClass = `comparison-grid-${Math.min(targetSlugs.length, 3)}`;
+
+      const columnsHtml = targetSlugs.map(slug => {
+        const entry = byNewspaper[slug] || {};
+        const meta = entry.meta || {};
+        const hits = entry.hits || [];
+        const content = hits.length > 0 ? hits.map(h => renderCardHtml(h)).join('') : `<div class="empty-state">No matching records found in ${escapeHtml(meta.title || slug)}.</div>`;
+
+        return `
+          <div>
+            <div class="split-col-header" style="background:${meta.bg || '#f8fafc'}; border-color:${meta.border || '#cbd5e1'};">
+              <div>
+                <strong style="color:${meta.accent || 'var(--text-main)'}; font-size:1.02rem;">${meta.icon || '📰'} ${escapeHtml(meta.title || slug)}</strong>
+                <div style="font-size:0.76rem; color:var(--text-muted);">${meta.city || ''}, ${meta.state_name || ''} • LCCN ${meta.lccn || ''}</div>
+              </div>
+              <span style="background:${meta.accent || '#0284c7'}; color:#ffffff; padding:0.2rem 0.65rem; border-radius:9999px; font-size:0.8rem; font-weight:700;">${hits.length} hits</span>
+            </div>
+            ${content}
+          </div>
+        `;
+      }).join('');
+
+      return `<div class="${colClass}">${columnsHtml}</div>`;
+    }
+
+    // Render Individual Newsprint Card
+    function renderCardHtml(h) {
+      return `
+        <div class="news-card" style="border-top:3px solid ${h.accent};">
+          <div class="news-masthead">
+            <span class="pub-badge" style="background:${h.bg}; color:${h.accent}; border:1px solid ${h.border};">
+              ${h.newspaper_icon} ${escapeHtml(h.newspaper_title)}
+            </span>
+            <span class="card-date">📅 ${escapeHtml(h.date)}</span>
+            <span class="card-tag">p.${h.sequence} (Ed.${h.edition})</span>
+            <span class="card-tag">Year ${h.namespace}</span>
+            <span class="card-score">Score: ${h.score.toFixed(4)}</span>
+          </div>
+
+          <div class="card-subloc">
+            📍 ${escapeHtml(h.newspaper_city)}, ${escapeHtml(h.newspaper_state)} • LCCN: <code>${escapeHtml(h.newspaper_lccn)}</code>
+          </div>
+
+          <div class="card-content-split">
+            <div class="reading-col">
+              <div class="article-reading-box" style="border-left:4px solid ${h.accent};">
+                ${h.highlighted_html}
+              </div>
+
+              <details class="ocr-drawer">
+                <summary class="ocr-summary">
+                  <span>📜 Full Page OCR Transcript (${h.char_count.toLocaleString()} chars)</span>
+                  <span>▾</span>
+                </summary>
+                <div class="ocr-drawer-content">
+                  <pre class="ocr-pre">${escapeHtml(h.raw_text)}</pre>
+                </div>
+              </details>
+
+              <div class="news-links-bar">
+                ${h.loc_page_url ? `<a href="${h.loc_page_url}" target="_blank" class="news-link">🏛️ View on LoC.gov ↗</a>` : ''}
+                ${h.pdf_url ? `<a href="${h.pdf_url}" target="_blank" class="news-link">📄 Page PDF ↗</a>` : ''}
+                ${h.high_res_url ? `<a href="${h.high_res_url}" target="_blank" class="news-link">🔍 1600px High-Res ↗</a>` : ''}
+              </div>
+            </div>
+
+            <div class="thumb-col">
+              <img src="${h.thumb_url}" alt="Page scan" class="folio-img" onclick="openImageModal('${h.high_res_url}', '${escapeHtml(h.newspaper_title)} • ${escapeHtml(h.date)}')">
+              <span style="display:block; font-size:0.72rem; color:var(--text-faint); margin-top:0.35rem; font-weight:500;">
+                Page ${h.sequence} (click to zoom)
+              </span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Render Latency HUD
+    function renderLatencyHud(elementId, metrics, totalHits, npCounts, modeName) {
+      const hud = document.getElementById(elementId);
+      if (!metrics || !hud) return;
+      hud.style.display = 'flex';
+
+      const totalMs = metrics.total_ms || 0;
+      const pineconeMs = metrics.pinecone_ms || 0;
+      const isCached = metrics.cached || false;
+
+      const cachePill = isCached ? '<span class="hud-pill cache-hit-pill">⚡ IN-MEMORY CACHE HIT (&lt;1ms)</span>' : '';
+
+      const slugAbbr = {
+        los_angeles_herald: '🌴 LA Herald',
+        the_san_francisco_call: '🌁 SF Call',
+        the_evening_world: '🗽 Evening World',
+        the_sun: '☀️ The Sun',
+        chicago_eagle: '🦅 Chicago Eagle',
+        the_beatrice_daily_express: '🌾 Beatrice Express',
+      };
+
+      const pubPills = [];
+      if (npCounts) {
+        for (const [slug, cnt] of Object.entries(npCounts)) {
+          if (cnt > 0) {
+            pubPills.push(`<span class="hud-pill">${slugAbbr[slug] || slug}: <strong style="color:#fbbf24;">${cnt}</strong></span>`);
+          }
+        }
+      }
+
+      hud.innerHTML = `
+        <span class="hud-title">⚡ PINECONE METRICS</span>
+        ${cachePill}
+        <span class="hud-pill">⏱️ Latency: <strong style="color:#38bdf8;">${totalMs.toFixed(0)}ms</strong> (${(totalMs/1000).toFixed(2)}s)</span>
+        <span class="hud-pill">🌲 Pinecone Query: <strong style="color:#4ade80;">${pineconeMs.toFixed(0)}ms</strong></span>
+        <span class="hud-pill">📚 Total Hits: <strong style="color:#fde047;">${totalHits}</strong></span>
+        <span class="hud-pill">🎯 Engine: <strong style="color:#c084fc;">${modeName || 'Hybrid'}</strong></span>
+        ${pubPills.join('')}
+      `;
+    }
+
+    // Render Density Histogram
+    function renderDensityHistogram(elementId, yearNpCounts) {
+      const container = document.getElementById(elementId);
+      if (!yearNpCounts || !container) return;
+      container.style.display = 'block';
+
+      const years = ["1890", "1891", "1892", "1905", "1906", "1907", "1908", "1909", "1910"];
+      const newspapers = state.config ? state.config.newspapers : {};
+
+      const yearTotals = {};
+      const pubTotals = {};
+      for (const slug of Object.keys(newspapers)) pubTotals[slug] = 0;
+
+      for (const yr of years) {
+        const counts = yearNpCounts[yr] || {};
+        let tot = 0;
+        for (const [s, c] of Object.entries(counts)) {
+          tot += (c || 0);
+          pubTotals[s] = (pubTotals[s] || 0) + (c || 0);
+        }
+        yearTotals[yr] = tot;
+      }
+
+      const maxYearTot = Math.max(...Object.values(yearTotals), 1);
+
+      const columnsHtml = years.map(yr => {
+        const counts = yearNpCounts[yr] || {};
+        const yrTot = yearTotals[yr] || 0;
+
+        const barsHtml = Object.entries(newspapers).map(([slug, meta]) => {
+          const c = counts[slug] || 0;
+          if (c > 0) {
+            const h = Math.max(Math.round((c / maxYearTot) * 48), 6);
+            return `<div title="${meta.title} (${yr}): ${c} hit(s)" style="flex:1; max-width:8px; height:${h}px; background:${meta.accent}; border-radius:2px 2px 0 0;"></div>`;
+          } else {
+            return `<div title="${meta.title} (${yr}): 0 hits" style="flex:1; max-width:8px; height:2px; background:var(--border-strong); border-radius:1px;"></div>`;
+          }
+        }).join('');
+
+        return `
+          <div class="density-col">
+            <div style="font-size:0.72rem; color:var(--text-muted); font-weight:700;">${yrTot}</div>
+            <div class="density-bars-box">${barsHtml}</div>
+            <div style="font-size:0.72rem; color:var(--text-main); font-weight:700; border-top:1px solid var(--border-strong); width:100%; text-align:center; padding-top:2px; font-family:'JetBrains Mono', monospace;">${yr}</div>
+          </div>
+        `;
+      }).join('');
+
+      const legendPills = Object.entries(newspapers).map(([slug, meta]) => {
+        const tot = pubTotals[slug] || 0;
+        return `
+          <span style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.74rem; background:${meta.bg}; color:${meta.accent}; padding:0.15rem 0.5rem; border-radius:9999px; border:1px solid ${meta.border}; font-weight:600;">
+            <span style="display:inline-block; width:8px; height:8px; background:${meta.accent}; border-radius:2px;"></span>
+            ${meta.title.split('(')[0].trim()}: <strong>${tot}</strong>
+          </span>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div class="density-bar-wrap">
+          <div class="density-header">
+            <div>
+              <span class="density-title">📊 Chronological Density Distribution (1890–1910)</span>
+              <span style="font-size:0.74rem; color:var(--text-faint); margin-left:0.4rem;">46,846 Articles Indexed in Pinecone</span>
+            </div>
+            <div class="density-legend">${legendPills}</div>
+          </div>
+          <div class="density-chart">${columnsHtml}</div>
+        </div>
+      `;
+    }
+
+    // ── Interactive Historical Calendar Logic ─────────────────────────────
+    const MONTH_NAMES_LIST = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const NP_EMOJIS = {
+      los_angeles_herald: '🌴',
+      the_san_francisco_call: '🌁',
+      the_evening_world: '🗽',
+      the_sun: '☀️',
+      chicago_eagle: '🦅',
+      the_beatrice_daily_express: '🌾',
+    };
+
+    function renderCalendarGrid(month, yearScope) {
+      state.calMonth = parseInt(month, 10);
+      const grid = document.getElementById('calendarDaysGrid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      // Set month title display
+      const monthName = MONTH_NAMES_LIST[state.calMonth - 1] || 'Month';
+      const yearText = state.calYear === 'All' ? '1890–1910' : state.calYear;
+      const titleEl = document.getElementById('calMonthTitle');
+      if (titleEl) titleEl.textContent = `${monthName}`;
+
+      // Keep dropdown in sync
+      const monthSel = document.getElementById('calMonthSelect');
+      if (monthSel) monthSel.value = String(state.calMonth);
+
+      // Determine day-of-week offset and days in month
+      const refYear = state.calYear === 'All' ? 1900 : parseInt(state.calYear, 10);
+      const firstDayIndex = new Date(refYear, state.calMonth - 1, 1).getDay(); // 0=Sun..6=Sat
+      const daysInMonth = new Date(refYear, state.calMonth, 0).getDate();
+      const prevMonthDays = new Date(refYear, state.calMonth - 1, 0).getDate();
+
+      // Leading padding cells from previous month
+      for (let i = 0; i < firstDayIndex; i++) {
+        const prevDayNum = prevMonthDays - firstDayIndex + i + 1;
+        const cell = document.createElement('div');
+        cell.className = 'cal-day-cell other-month';
+        cell.innerHTML = `
+          <div class="cal-day-top"><span class="cal-day-num" style="opacity:0.4;">${prevDayNum}</span></div>
+        `;
+        grid.appendChild(cell);
+      }
+
+      // Active days of current month
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = String(state.calMonth).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const manifestEntry = (state.calendarManifest || {})[key];
+        const isSelected = (state.calMonth === parseInt(state.calMonth, 10) && state.calDay === d);
+
+        // Check if there are issues matching current filters
+        let hasIssues = false;
+        let badgeText = '';
+        let emojisHtml = '';
+
+        if (manifestEntry) {
+          const entryYears = manifestEntry.years || [];
+          const entryPapers = manifestEntry.newspapers || [];
+
+          const yearMatch = (state.calYear === 'All') || entryYears.includes(state.calYear);
+          const paperMatch = (state.calNewspaper === 'all') || entryPapers.includes(state.calNewspaper);
+
+          if (yearMatch && paperMatch) {
+            hasIssues = true;
+            const paperEmojis = entryPapers.map(p => NP_EMOJIS[p] || '📰').join('');
+            emojisHtml = `<span class="cal-issue-emojis">${paperEmojis}</span>`;
+            const yrCount = entryYears.length;
+            badgeText = `${yrCount > 1 ? yrCount + ' yrs' : yrCount + ' yr'} • ${entryPapers.length} papers`;
+          }
+        }
+
+        const cell = document.createElement('div');
+        cell.className = `cal-day-cell ${hasIssues ? 'has-issues' : ''} ${isSelected ? 'selected-day' : ''}`;
+        cell.title = hasIssues 
+          ? `${monthName} ${d}: ${badgeText}\nClick to explore issues published on this day.` 
+          : `${monthName} ${d}: Click to search archive for this date.`;
+
+        cell.innerHTML = `
+          <div class="cal-day-top">
+            <span class="cal-day-num">${d}</span>
+            ${emojisHtml}
+          </div>
+          ${hasIssues ? `<div class="cal-issue-badge"><span>📰 ${badgeText}</span></div>` : '<div style="height:16px;"></div>'}
+        `;
+
+        cell.onclick = () => selectCalendarDay(state.calMonth, d);
+        grid.appendChild(cell);
+      }
+
+      // Trailing padding cells to complete final row
+      const totalCells = firstDayIndex + daysInMonth;
+      const remainder = (7 - (totalCells % 7)) % 7;
+      for (let j = 1; j <= remainder; j++) {
+        const cell = document.createElement('div');
+        cell.className = 'cal-day-cell other-month';
+        cell.innerHTML = `
+          <div class="cal-day-top"><span class="cal-day-num" style="opacity:0.4;">${j}</span></div>
+        `;
+        grid.appendChild(cell);
+      }
+    }
+
+    function prevCalendarMonth() {
+      let m = state.calMonth - 1;
+      if (m < 1) m = 12;
+      onCalendarMonthChange(m);
+    }
+
+    function nextCalendarMonth() {
+      let m = state.calMonth + 1;
+      if (m > 12) m = 1;
+      onCalendarMonthChange(m);
+    }
+
+    function onCalendarMonthChange(val) {
+      state.calMonth = parseInt(val, 10);
+      renderCalendarGrid(state.calMonth, state.calYear);
+    }
+
+    function onCalendarYearChange(val) {
+      state.calYear = val;
+      renderCalendarGrid(state.calMonth, state.calYear);
+      if (state.calDay) executeCalendarSearch();
+    }
+
+    function onCalendarNewspaperChange(val) {
+      state.calNewspaper = val;
+      renderCalendarGrid(state.calMonth, state.calYear);
+      if (state.calDay) executeCalendarSearch();
+    }
+
+    function jumpToCalendarDate(month, day) {
+      state.calMonth = parseInt(month, 10);
+      state.calDay = parseInt(day, 10);
+      renderCalendarGrid(state.calMonth, state.calYear);
+      executeCalendarSearch();
+    }
+
+    function selectCalendarDay(month, day) {
+      state.calMonth = parseInt(month, 10);
+      state.calDay = parseInt(day, 10);
+      renderCalendarGrid(state.calMonth, state.calYear);
+      executeCalendarSearch();
+    }
+
+    // Execute Calendar Search
+    async function executeCalendarSearch() {
+      const m = state.calMonth;
+      const d = state.calDay;
+      const yrChoice = state.calYear;
+      const npChoice = state.calNewspaper;
+
+      const monthName = MONTH_NAMES_LIST[m - 1] || `Month ${m}`;
+      const dateLabel = `${monthName} ${String(d).padStart(2, '0')}`;
+
+      // Update date banner
+      document.getElementById('calActiveDateTitle').textContent = `📅 Selected Date: ${dateLabel} (${yrChoice === 'All' ? '1890–1910' : yrChoice})`;
+      document.getElementById('calActiveDateMeta').textContent = `Querying nationwide broadsheets across turn-of-the-century archives...`;
+
+      const gallery = document.getElementById('calGalleryArea');
+      gallery.innerHTML = `
+        <div class="empty-state">
+          <span class="loading-spinner" style="border-top-color:var(--accent-primary); border-color:rgba(2,132,199,0.3); width:28px; height:28px; margin-bottom:0.75rem;"></span>
+          <div>Retrieving historical issues published on <strong>${dateLabel}</strong>...</div>
+        </div>
+      `;
+
+      try {
+        const payload = {
+          month: m,
+          day: d,
+          year: yrChoice,
+          newspaper_slug: npChoice,
+          front_page_only: false,
+          top_k: 8,
+        };
+
+        const res = await fetch('/api/calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        // Render Latency HUD
+        renderLatencyHud('calLatencyHud', data.metrics, data.total_hits, data.newspaper_counts, 'Explore by Date');
+
+        const byYear = data.by_year || {};
+        const sections = [];
+        let totalIssuesFound = 0;
+
+        for (const [yr, hits] of Object.entries(byYear)) {
+          if (!hits || hits.length === 0) continue;
+          totalIssuesFound += hits.length;
+          
+          const colClass = hits.length >= 3 ? 'comparison-grid-3' : (hits.length === 2 ? 'comparison-grid-2' : 'comparison-grid-1');
+
+          sections.push(`
+            <div style="margin-bottom:2.25rem; border-top:2px solid var(--border-subtle); padding-top:1.25rem;">
+              <div style="margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                  <span style="background:var(--accent-primary); color:#ffffff; padding:0.25rem 0.85rem; border-radius:9999px; font-weight:700; font-size:0.95rem; letter-spacing:0.02em;">📅 ${yr} Edition</span>
+                  <span style="font-size:0.88rem; color:var(--text-muted);">Published on <strong>${escapeHtml(data.date_label)}</strong>, ${yr}</span>
+                </div>
+                <span class="badge" style="background:var(--bg-elevated); border:1px solid var(--border-strong); font-weight:700;">
+                  📚 ${hits.length} issue(s) retrieved
+                </span>
+              </div>
+              <div class="${colClass}">
+                ${hits.map(h => renderCardHtml(h)).join('')}
+              </div>
+            </div>
+          `);
+        }
+
+        if (sections.length > 0) {
+          gallery.innerHTML = sections.join('');
+          document.getElementById('calActiveDateMeta').textContent = `Retrieved ${totalIssuesFound} broadsheet page(s) across ${Object.keys(byYear).length} target years.`;
+          document.getElementById('calActiveDateBadge').innerHTML = `
+            <span class="badge" style="background:#16a34a; color:#ffffff; font-weight:700; padding:0.35rem 0.75rem;">
+              ✓ ${totalIssuesFound} Issues Found
+            </span>
+          `;
+        } else {
+          document.getElementById('calActiveDateMeta').textContent = `No digitized issues in local sample for this calendar date.`;
+          document.getElementById('calActiveDateBadge').innerHTML = `
+            <span class="badge" style="background:#64748b; color:#ffffff; font-weight:600; padding:0.35rem 0.75rem;">
+              0 Local Issues
+            </span>
+          `;
+          const locSearchUrl = `https://chroniclingamerica.loc.gov/search/pages/results/?date1=1890&date2=1910&dateFilterType=range&date1_month=${String(m).padStart(2, '0')}&date1_day=${String(d).padStart(2, '0')}&date2_month=${String(m).padStart(2, '0')}&date2_day=${String(d).padStart(2, '0')}`;
+          gallery.innerHTML = `
+            <div class="empty-state" style="padding:3rem 1.5rem; text-align:center;">
+              <div style="font-size:2.5rem; margin-bottom:0.75rem;">🏛️</div>
+              <h3 style="font-family:'Cinzel', serif; font-size:1.35rem; color:var(--text-main); margin-bottom:0.5rem;">
+                No Digitized Issues in Curated Sample for ${escapeHtml(data.date_label)}
+              </h3>
+              <p style="max-width:580px; margin:0 auto 1.25rem auto; color:var(--text-muted); font-size:0.92rem; line-height:1.6;">
+                Our local sample contains 46,846 pages focused on key seasonal windows and pivotal dates (such as Jan 1–7, Jul 1–4, Sep 17, and Dec 1–3). 
+                You can search the entire national Library of Congress collection for this exact calendar date directly on Chronicling America:
+              </p>
+              <div style="display:flex; justify-content:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+                <a href="${locSearchUrl}" target="_blank" class="search-btn" style="text-decoration:none; display:inline-flex; align-items:center; gap:0.5rem; padding:0.5rem 1.2rem; font-size:0.88rem;">
+                  🏛️ Search ${escapeHtml(data.date_label)} on LoC.gov ↗
+                </a>
+              </div>
+              <div style="font-size:0.82rem; color:var(--text-faint); margin-bottom:0.5rem;">Or jump to nearest available dates in our local archive:</div>
+              <div style="display:flex; justify-content:center; gap:0.5rem; flex-wrap:wrap;">
+                <button type="button" class="jump-chip" onclick="jumpToCalendarDate(1, 1)">🎆 Jan 1 (New Year)</button>
+                <button type="button" class="jump-chip" onclick="jumpToCalendarDate(7, 2)">☀️ Jul 2 (Mid-Summer)</button>
+                <button type="button" class="jump-chip" onclick="jumpToCalendarDate(12, 1)">❄️ Dec 1 (Winter)</button>
+              </div>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Calendar search failed:', err);
+        gallery.innerHTML = `
+          <div class="empty-state" style="color:#ef4444;">Calendar search failed: ${err.message}</div>
+        `;
+      }
+    }
+
+    // Load 1-Click Preset into Workbench
+    function loadPreset(idx) {
+      if (!state.config || !state.config.presets[idx]) return;
+      const p = state.config.presets[idx];
+
+      switchTab('tab-workbench');
+      document.getElementById('wbQueryInput').value = p.query;
+      state.mode = p.mode;
+      state.year = Array.isArray(p.years) ? (p.years.length > 1 ? 'All' : p.years[0]) : p.years;
+
+      // Update UI active buttons
+      document.querySelectorAll('#modeGroup .seg-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-mode') === state.mode);
+      });
+      document.querySelectorAll('#yearRail .year-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-year') === state.year);
+      });
+
+      executeWorkbenchSearch();
+    }
+
+    // Modal Helpers
+    function openImageModal(imgUrl, caption) {
+      const modal = document.getElementById('imageModal');
+      const img = document.getElementById('modalImg');
+      const cap = document.getElementById('modalCaption');
+      img.src = imgUrl;
+      cap.textContent = caption || '';
+      modal.classList.add('active');
+    }
+
+    function closeImageModal(e) {
+      if (e && e.target !== document.getElementById('imageModal') && !e.target.classList.contains('modal-close-btn')) return;
+      document.getElementById('imageModal').classList.remove('active');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
