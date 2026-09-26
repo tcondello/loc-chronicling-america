@@ -10,14 +10,18 @@ app_file: app.py
 pinned: false
 ---
 
-# 📰 Coast-to-Coast Historical Newspaper Search (1890–1910)
-### Cross-Country Comparative Archive • Library of Congress Chronicling America & Pinecone Documents API
+# 📰 Coast-to-Coast & Heartland Historical Newspaper Search (1890–1910)
+### Multi-State Comparative Archive • Library of Congress Chronicling America & Pinecone Documents API
 
-Search, compare, and visually explore 20 pivotal years of American newsprint across two iconic regional newspapers:
-- 🌴 **Los Angeles Herald** (West Coast • Los Angeles, California • LCCN `sn85042462`)
-- 🗽 **The Evening World** (East Coast • New York, New York • LCCN `sn83030193`)
+Search, compare, and visually explore 20 pivotal years of American newsprint across 6 iconic newspapers from 4 states:
+- 🌴 **Los Angeles Herald** (California, West Coast • LCCN `sn85042462`)
+- 🌁 **The San Francisco Call** (California, Bay Area • LCCN `sn85066387`)
+- 🗽 **The Evening World** (New York, East Coast • LCCN `sn83030193`)
+- ☀️ **The Sun** (New York, East Coast • LCCN `sn83030272`)
+- 🌾 **The Beatrice Daily Express** (Nebraska, Heartland • LCCN `sn84020107`)
+- 🦅 **Chicago Eagle** (Illinois, Midwest • LCCN `sn84025828`)
 
-Powered by **Pinecone Document Schema Full-Text Search (BM25 & Lucene)**, **OpenAI Dense Vectors (`text-embedding-3-small`)**, **Chonkie Recursive Chunking**, and dynamic **Library of Congress IIIF Dynamic Image CDN**.
+Powered by **Pinecone Document Schema Full-Text Search (BM25 & Lucene)**, **OpenAI Dense Vectors (`text-embedding-3-small`)**, **Chonkie Recursive Chunking**, and dynamic **Library of Congress IIIF Dynamic Image CDN**. Containing **46,846 indexed chunks** across 9 year namespaces.
 
 ---
 

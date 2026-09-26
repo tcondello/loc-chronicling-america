@@ -11,10 +11,27 @@ Supports Pinecone Lucene query syntax features:
 
 import html
 import re
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Set, Tuple
-import snowballstemmer
-
-_stemmer = snowballstemmer.stemmer("english")
+try:
+    import snowballstemmer
+    _stemmer = snowballstemmer.stemmer("english")
+except Exception:
+    class _FallbackStemmer:
+        def stemWord(self, w: str) -> str:
+            low = w.lower()
+            if low.endswith("ies") and len(low) > 4:
+                return low[:-3] + "y"
+            if low.endswith("es") and len(low) > 3:
+                return low[:-2]
+            if low.endswith("s") and not low.endswith("ss") and len(low) > 3:
+                return low[:-1]
+            if low.endswith("ing") and len(low) > 5:
+                return low[:-3]
+            if low.endswith("ed") and len(low) > 4:
+                return low[:-2]
+            return low
+    _stemmer = _FallbackStemmer()
 
 _WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z]+)?")
 _OPERATORS = {"AND", "OR", "NOT", "TO"}
@@ -27,12 +44,15 @@ _KNOWN_FIELDS = {"text", "title", "body", "content"}
 
 
 def levenshtein_dist(s1: str, s2: str) -> int:
-    """Compute standard Levenshtein edit distance between two strings."""
-    if len(s1) < len(s2):
+    """Compute standard Levenshtein edit distance between two strings with early exit."""
+    len1, len2 = len(s1), len(s2)
+    if abs(len1 - len2) > 2:
+        return abs(len1 - len2)
+    if len1 < len2:
         return levenshtein_dist(s2, s1)
-    if len(s2) == 0:
-        return len(s1)
-    prev = list(range(len(s2) + 1))
+    if len2 == 0:
+        return len1
+    prev = list(range(len2 + 1))
     for i, c1 in enumerate(s1):
         curr = [i + 1]
         for j, c2 in enumerate(s2):
@@ -41,19 +61,21 @@ def levenshtein_dist(s1: str, s2: str) -> int:
     return prev[-1]
 
 
+@lru_cache(maxsize=1024)
 def _stem(word: str) -> str:
     return _stemmer.stemWord(word.lower())
 
 
+@lru_cache(maxsize=128)
 def parse_query_features(query: str) -> Dict[str, Any]:
-    """Extract full-text, fuzzy, regex, and phrase clauses from a query."""
+    """Extract full-text, fuzzy, regex, and phrase clauses from a query (LRU cached)."""
     if not query:
         return {
-            "regexes": [],
-            "fuzzy_terms": [],
-            "phrases": [],
+            "regexes": (),
+            "fuzzy_terms": (),
+            "phrases": (),
             "stems": {},
-            "prefixes": [],
+            "prefixes": (),
         }
 
     # 1. Regex patterns: /pattern.*/
@@ -100,16 +122,16 @@ def parse_query_features(query: str) -> Dict[str, Any]:
         prefixes.append(lower_t)
 
     return {
-        "regexes": regexes,
-        "fuzzy_terms": fuzzy_terms,
-        "phrases": phrases,
+        "regexes": tuple(regexes),
+        "fuzzy_terms": tuple(fuzzy_terms),
+        "phrases": tuple(phrases),
         "stems": stems,
-        "prefixes": prefixes,
+        "prefixes": tuple(prefixes),
     }
 
 
 def highlight_text(text: str, query: str) -> str:
-    """Highlight query matches within text, covering stems, fuzzy OCR typos, and regex."""
+    """Highlight query matches within text with in-chunk token memoization."""
     if not text or not query:
         return html.escape(text)
 
@@ -123,41 +145,58 @@ def highlight_text(text: str, query: str) -> str:
     if not regexes and not fuzzy_terms and not stems and not prefixes and not phrases:
         return html.escape(text)
 
-    # Check each word token
+    # In-chunk word memoization dictionary
+    word_memo: Dict[str, Tuple[bool, Optional[str]]] = {}
+
     def check_word(word: str) -> Tuple[bool, Optional[str]]:
         low = word.lower()
+        if low in word_memo:
+            return word_memo[low]
+
         if len(low) < 2:
+            word_memo[low] = (False, None)
             return False, None
 
         # Exact / stemmed match
         word_stem = _stem(low)
         if word_stem in stems:
             orig = stems[word_stem]
-            return True, f"Stem match: {orig}"
+            res = (True, f"Stem match: {orig}")
+            word_memo[low] = res
+            return res
 
         # Prefix match (for phrase prefix or standard prefix >= 4 chars)
         for p in prefixes:
             if len(p) >= 4 and low.startswith(p):
-                return True, f"Prefix match: {p}*"
+                res = (True, f"Prefix match: {p}*")
+                word_memo[low] = res
+                return res
 
         # Fuzzy matching (typo / OCR noise tolerance)
         for f_term, max_dist in fuzzy_terms:
             if abs(len(low) - len(f_term)) <= max_dist:
                 d = levenshtein_dist(low, f_term)
                 if d <= max_dist:
-                    return True, f"Fuzzy match (dist {d}): {f_term}~{max_dist}"
+                    res = (True, f"Fuzzy match (dist {d}): {f_term}~{max_dist}")
+                    word_memo[low] = res
+                    return res
 
         # Regex matching
         for pat_str, pat_compiled in regexes:
             if pat_compiled.search(word):
-                return True, f"Regex match: /{pat_str}/"
+                res = (True, f"Regex match: /{pat_str}/")
+                word_memo[low] = res
+                return res
 
         # Phrase term matching
         for phrase in phrases:
             p_words = phrase.split()
             if any(low == pw or _stem(low) == _stem(pw) for pw in p_words if pw not in _STOPWORDS):
-                return True, f'Phrase term: "{phrase}"'
+                res = (True, f'Phrase term: "{phrase}"')
+                word_memo[low] = res
+                return res
 
+        word_memo[low] = (False, None)
         return False, None
 
     parts = []
@@ -181,3 +220,16 @@ def highlight_text(text: str, query: str) -> str:
         parts.append(html.escape(text[last_idx:]))
 
     return "".join(parts)
+
+
+def clean_snippet(text: str, max_chars: int = 260) -> str:
+    """Produce a clean excerpt snippet for card previews (inspired by topic-feed-lab)."""
+    if not text:
+        return ""
+    # Strip excess whitespace
+    clean = " ".join(text.split())
+    if len(clean) <= max_chars:
+        return clean
+    # Trim to word boundary
+    truncated = clean[:max_chars].rsplit(" ", 1)[0]
+    return f"{truncated} …"

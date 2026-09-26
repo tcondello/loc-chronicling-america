@@ -40,8 +40,8 @@ def parse_args():
     parser.add_argument(
         "--newspaper",
         default="the_evening_world",
-        choices=["los_angeles_herald", "the_evening_world"],
-        help="Newspaper to process (default: the_evening_world)",
+        choices=list(config.NEWSPAPERS.keys()),
+        help=f"Newspaper to process ({', '.join(config.NEWSPAPERS.keys())})",
     )
     parser.add_argument(
         "--years",
@@ -67,7 +67,7 @@ def parse_args():
     parser.add_argument(
         "--output",
         default=None,
-        help="Output JSONL file path (default: data/chunks_ny.jsonl or data/chunks.jsonl)",
+        help="Output JSONL file path (default: data/chunks_{newspaper}.jsonl)",
     )
     parser.add_argument(
         "--chunk-size",
@@ -112,6 +112,13 @@ def get_matching_files(
                 except Exception:
                     pass
 
+    target_mds = [
+        "01-01", "01-02", "01-03", "01-04",
+        "07-01", "07-02", "07-03", "07-04",
+        "12-01", "12-02", "12-03",
+        "08-01", "08-02",
+    ]
+
     print(f"Discovering matching issue files in {path_prefix}...")
 
     for yr in sorted(years):
@@ -135,24 +142,32 @@ def get_matching_files(
             ref_dates = sorted(ref_dates_by_year.get(yr, []))
             chosen = []
 
-            # 1. First priority: Exact matches with reference dates
+            # 1. First priority: Exact matches with year reference dates
             for d in ref_dates:
-                if d in file_map:
+                if d in file_map and file_map[d] not in chosen:
                     chosen.append(file_map[d])
 
-            # 2. Second priority: Closest available dates in same month (or December for 1910)
+            # 2. Second priority: Preferred target month-days (01-01..04, 07-01..04, 12-01..03)
             if len(chosen) < limit_per_year:
-                target_month_prefix = ref_dates[0][:7] if ref_dates else f"{yr}-01"
-                candidates = [p for d, p in file_map.items() if d.startswith(target_month_prefix)]
-                if not candidates and yr == "1910":
-                    candidates = [p for d, p in file_map.items() if d.startswith("1910-12")]
-                for c in candidates:
-                    if c not in chosen:
-                        chosen.append(c)
+                for md in target_mds:
+                    cand_d = f"{yr}-{md}"
+                    if cand_d in file_map and file_map[cand_d] not in chosen:
+                        chosen.append(file_map[cand_d])
                     if len(chosen) >= limit_per_year:
                         break
 
-            # 3. Third priority: Any available files in that year
+            # 3. Third priority: Any issues in target months (01, 07, 12, 08)
+            if len(chosen) < limit_per_year:
+                for m_prefix in [f"{yr}-01", f"{yr}-07", f"{yr}-12", f"{yr}-08"]:
+                    for d, p in sorted(file_map.items()):
+                        if d.startswith(m_prefix) and p not in chosen:
+                            chosen.append(p)
+                        if len(chosen) >= limit_per_year:
+                            break
+                    if len(chosen) >= limit_per_year:
+                        break
+
+            # 4. Fourth priority: Any available files in that year
             if len(chosen) < limit_per_year:
                 for c in parquet_files:
                     if c not in chosen:
@@ -163,7 +178,7 @@ def get_matching_files(
             matched[yr] = chosen[:limit_per_year]
             print(f"  Year {yr}: {len(matched[yr])} matching issue file(s)")
         except Exception as e:
-            print(f"  Year {yr}: Failed to inspect ({e})")
+            print(f"  Year {yr}: Failed to inspect or does not exist ({e})")
             matched[yr] = []
 
     return matched
@@ -177,10 +192,15 @@ def main():
     if args.output:
         out_path = Path(args.output).resolve()
     else:
-        out_path = (config.CHUNKS_NY_PATH if np_slug == "the_evening_world" else config.CHUNKS_PATH).resolve()
+        if np_slug == "los_angeles_herald":
+            out_path = config.CHUNKS_PATH.resolve()
+        elif np_slug == "the_evening_world":
+            out_path = config.CHUNKS_NY_PATH.resolve()
+        else:
+            out_path = (config.DATA_DIR / f"chunks_{np_slug}.jsonl").resolve()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    done_file = config.PREPARE_NY_DONE_PATH if np_slug == "the_evening_world" else config.PREPARE_DONE_PATH
+    done_file = config.DATA_DIR / f".prepare_{np_slug}_done"
 
     if done_file.exists() and not args.force:
         print(f"Prepare phase for '{np_slug}' already marked complete ({done_file}).")
