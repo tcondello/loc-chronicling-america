@@ -51,10 +51,16 @@ pipeline = [
     "pyarrow>=14.0.0",
     "huggingface_hub>=0.20.0",
 ]
+explore = [
+    "duckdb>=1.1.0",
+    "textual>=3.0.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pyarrow>=14.0.0",
     "huggingface_hub>=0.20.0",
+    "duckdb>=1.1.0",
+    "textual>=3.0.0",
 ]
 
 [project.urls]
