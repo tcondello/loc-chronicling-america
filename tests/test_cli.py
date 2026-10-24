@@ -34,6 +34,30 @@ def test_cli_parser_batch():
     assert args.name == "nbu_indescribablebeast_ver01"
 
 
+def test_cli_parser_explore():
+    parser = build_parser()
+    args = parser.parse_args([
+        "explore",
+        "--query",
+        '"buried alive"',
+        "--state",
+        "new_york",
+        "--paper",
+        "the_evening_world",
+        "--from-year",
+        "1890",
+        "--to-year",
+        "1892",
+        "--limit",
+        "5",
+    ])
+    assert args.command == "explore"
+    assert args.query == '"buried alive"'
+    assert args.from_year == 1890
+    assert args.to_year == 1892
+    assert args.limit == 5
+
+
 def test_cli_parser_search():
     parser = build_parser()
     args = parser.parse_args(["search", "titles", "Monitor", "--state", "Nebraska"])

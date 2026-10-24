@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .client import ChroniclingAmerica
+from .explore_query import query_help
 
 
 console = Console()
@@ -80,6 +81,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_pipe.add_argument("--keep-tar", action="store_true", help="Keep .tar.bz2 archives after processing (default: False)")
     p_pipe.add_argument("--purge-after-upload", action="store_true", help="Delete local Parquet files after successful HF upload")
     p_pipe.add_argument("--status", action="store_true", help="Display pipeline queue status and exit")
+
+    p_explore = subparsers.add_parser(
+        "explore",
+        help="Search Hugging Face OCR text across years",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=query_help(),
+    )
+    p_explore.add_argument("--query", "-q", help="Run one search and print it, instead of opening the terminal UI")
+    p_explore.add_argument("--state", default="new_york", help="State folder slug (default: new_york)")
+    p_explore.add_argument("--paper", default="the_evening_world", help="Paper folder slug (default: the_evening_world)")
+    p_explore.add_argument("--from-year", type=int, default=1890, help="First year to scan (default: 1890)")
+    p_explore.add_argument("--to-year", type=int, default=1890, help="Last year to scan (default: 1890)")
+    p_explore.add_argument("--limit", type=int, default=20, help="Maximum hits (default: 20)")
+    p_explore.add_argument("--any-ocr", action="store_true", help="Keep poorly scanned pages")
 
     return parser
 
@@ -310,9 +325,49 @@ def handle_pipeline(client: ChroniclingAmerica, args: argparse.Namespace) -> Non
     )
 
 
+def handle_explore(args: argparse.Namespace) -> None:
+    from .explore_query import ExploreQueryError
+    from .explore_search import search_pages
+
+    if not args.query:
+        from .explore_tui import run_tui
+
+        run_tui(
+            state=args.state,
+            paper=args.paper,
+            year_from=args.from_year,
+            year_to=args.to_year,
+            limit=args.limit,
+            readable=not args.any_ocr,
+        )
+        return
+
+    try:
+        hits, explanation = search_pages(
+            args.query,
+            state=args.state,
+            paper=args.paper,
+            year_from=args.from_year,
+            year_to=args.to_year,
+            readable=not args.any_ocr,
+            limit=args.limit,
+            progress=lambda message: console.print(f"[dim]{message}[/dim]"),
+        )
+    except ExploreQueryError as exc:
+        console.print(f"[bold red]{exc}[/bold red]")
+        raise SystemExit(1) from exc
+
+    from .explore_tui import format_hits
+
+    console.print(format_hits(hits, explanation))
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "explore":
+        handle_explore(args)
+        return
     client = ChroniclingAmerica()
 
     if args.command == "resolve":
